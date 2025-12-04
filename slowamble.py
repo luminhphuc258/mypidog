@@ -6,19 +6,23 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# ================== CẤU HÌNH CHUNG ==================
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-MOVE_STEPS = 35      # bước nội suy giữa 2 pose
+# Nội suy chung (ngồi/đứng)
+MOVE_STEPS = 35
 STEP_DELAY = 0.02
-CYCLES = 5           # số lần lặp: sit -> stand -> 7 bước -> sit
 
-# chỉnh từ tư thế ngồi trong file sang đứng
-DELTA_P5 = 90   # P5 (motor 6)
-DELTA_P7 = -90  # P7 (motor 8)
+# Nội suy cho bước đi – ÍT bước hơn => quay nhanh, “mạnh” hơn
+WALK_STEPS = 15
+WALK_DELAY = 0.015
+
+CYCLES = 5
+
+DELTA_P5 = 90   # motor 6
+DELTA_P7 = -90  # motor 8
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -45,8 +49,8 @@ def load_pose_file(path: Path) -> dict:
 
 def make_stand_from_sit(sit: dict) -> dict:
     stand = dict(sit)
-    stand["P5"] = clamp(sit["P5"] + DELTA_P5)  # motor 6
-    stand["P7"] = clamp(sit["P7"] + DELTA_P7)  # motor 8
+    stand["P5"] = clamp(sit["P5"] + DELTA_P5)
+    stand["P7"] = clamp(sit["P7"] + DELTA_P7)
     return stand
 
 
@@ -65,16 +69,7 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict,
         sleep(step_delay)
 
 
-# ===================================================
-# 7 STEP SLOW AMBLE – GÓC BẠN ĐÃ CALIBRATE SẴN
-# Motor mapping (để nhớ):
-#  - Motor 1  = chân trái trước  (P1)
-#  - Motor 3  = chân phải trước (P3)
-#  - Motor 5  = chân trái sau   (P5)
-#  - Motor 7  = chân phải sau   (P7)
-#  - Motor 0,2,4,6 = khớp nối tương ứng
-# ===================================================
-
+# ===== 7 STEP SLOW AMBLE =====
 STEP1 = {
   "P0": -27, "P1": 79, "P2": 43, "P3": -56,
   "P4": 48,  "P5": 67, "P6": -45, "P7": -3,
@@ -121,42 +116,37 @@ STEPS = [STEP1, STEP2, STEP3, STEP4, STEP5, STEP6, STEP7]
 
 
 def slow_amble_cycle(servos: dict, sit_pose: dict, stand_pose: dict):
-    """
-    1. Về tư thế trong config (ngồi)
-    2. Đứng dậy
-    3. Chạy 7 step slow amble
-    4. Quay lại tư thế trong config (ngồi)
-    """
-    # 1. về tư thế config
+    # 1. về tư thế trong config
     apply_pose(servos, sit_pose)
     sleep(0.5)
 
-    # 2. sit -> stand
-    move_pose(servos, sit_pose, stand_pose)
+    # 2. sit -> stand (êm)
+    move_pose(servos, sit_pose, stand_pose,
+              steps=MOVE_STEPS, step_delay=STEP_DELAY)
     sleep(0.2)
 
-    # 3. stand -> step1..step7
+    # 3. stand -> 7 bước slow amble (NHANH HƠN)
     current = stand_pose
     for pose in STEPS:
-        move_pose(servos, current, pose)
+        move_pose(servos, current, pose,
+                  steps=WALK_STEPS, step_delay=WALK_DELAY)
         current = pose
 
-    # 4. step7 -> sit pose
-    move_pose(servos, current, sit_pose)
+    # 4. step7 -> ngồi lại (êm)
+    move_pose(servos, current, sit_pose,
+              steps=MOVE_STEPS, step_delay=STEP_DELAY)
     sleep(0.4)
 
 
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # load pose trong config (ngồi) và tạo tư thế đứng
     sit_pose = load_pose_file(POSE_FILE)
     stand_pose = make_stand_from_sit(sit_pose)
 
     for _ in range(CYCLES):
         slow_amble_cycle(servos, sit_pose, stand_pose)
 
-    # kết thúc: giữ ở tư thế config
     apply_pose(servos, sit_pose)
     sleep(0.5)
 
