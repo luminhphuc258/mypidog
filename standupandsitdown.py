@@ -23,8 +23,8 @@ STEP_DELAY = 0.02
 #   - DELTA_P5: cộng vào góc của P5 (motor 6)
 #   - DELTA_P7: cộng vào góc của P7 (motor 8)
 # GỢI Ý BAN ĐẦU: thử -40 cho cả hai (hoặc -30 nếu thấy mạnh quá).
-DELTA_P5 = 40      # thử: nếu chân quay ra sau, đổi thành +40
-DELTA_P7 = -40      # thử: nếu chân quay ra sau, đổi thành +40
+DELTA_P5 = 90      # thử: nếu chân quay ra sau, đổi thành +40
+DELTA_P7 = -90      # thử: nếu chân quay ra sau, đổi thành +40
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
