@@ -22,7 +22,7 @@ DELAY_BETWEEN_WRITES = 0.01  # seconds
 # ==== TƯ THẾ CHUẨN: ROBOT NGỒI + ĐẦU NHÌN THẲNG ====
 # Lấy từ file ~/pidog/examples/pidog_pose_config.txt trong hình
 BASE_POSE_CONFIG = {
-       "P0": 0,
+    "P0": 0,
     "P1": 18,
     "P2": 4,
     "P3": 0,
@@ -202,18 +202,31 @@ def main(stdscr):
     # init servos
     servos = {port: Servo(port) for port in SERVO_PORTS}
 
-    # ==== LOAD CONFIG ====
-    cfg = load_config(config_path)
-
-    # Nếu file chưa tồn tại thì tạo mới (tư thế chuẩn) để anh dễ cat xem
-    if not config_path.exists():
-        save_config(config_path, cfg)
-        status = (
-            f"Không thấy {config_path.name}, đã tạo file mới với tư thế chuẩn. "
-            "Nhấn 'a' để apply."
-        )
+    # ==== STARTUP: LOAD + APPLY CONFIG NGAY ====
+    if config_path.exists():
+        # Có file -> load + apply
+        cfg = load_config(config_path)
+        try:
+            apply_all(servos, cfg)
+            status = f"Đã load + apply config từ {config_path.name}. Bắt đầu chỉnh servo."
+        except Exception as e:
+            status = f"⚠️ Load OK nhưng apply ALL thất bại: {e} (try sudo?)"
     else:
-        status = "Loaded config từ file. Nhấn 'a' để apply tất cả, hoặc chỉnh từng servo."
+        # Không có file -> dùng tư thế chuẩn, lưu file + apply
+        cfg = default_config()
+        try:
+            save_config(config_path, cfg)
+        except Exception as e:
+            # lưu lỗi thì vẫn tiếp tục, vì cfg vẫn dùng được
+            status = f"⚠️ Không lưu được file mới: {e}"
+        try:
+            apply_all(servos, cfg)
+            status = (
+                f"Không thấy {config_path.name}, đã tạo với tư thế chuẩn và apply xuống servo. "
+                "Bắt đầu chỉnh servo."
+            )
+        except Exception as e:
+            status = f"⚠️ Tạo file mới nhưng apply ALL thất bại: {e} (try sudo?)"
 
     idx = 0
     step = DEFAULT_STEP
@@ -291,9 +304,10 @@ def main(stdscr):
         elif key in (ord("a"), ord("A")):
             try:
                 apply_all(servos, cfg)
-                status = "Applied ALL servos từ config hiện tại."
             except Exception as e:
                 status = f"⚠️ Apply ALL failed: {e} (try sudo?)"
+            else:
+                status = "Applied ALL servos từ config hiện tại."
 
         elif key in (ord("s"), ord("S")):
             try:
@@ -304,7 +318,7 @@ def main(stdscr):
 
         elif key in (ord("l"), ord("L")):
             cfg = load_config(config_path)
-            status = f"Loaded <- {config_path} (nhấn 'a' để apply)"
+            status = f"Loaded <- {config_path} (nhấn 'a' nếu muốn apply lại toàn bộ)"
 
         else:
             status = f"(ignored key: {key})"
