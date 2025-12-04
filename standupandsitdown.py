@@ -21,24 +21,11 @@ STEP_DELAY = 0.02
 
 LEG_DELTA = 70  # đổi góc 70 độ
 
-# Motor được phép di chuyển tạm thời: chỉ motor 5 và 7  => P4, P6
-# index theo P0..P7 => motor 1..8
-# motor 5 -> P4 => index 4
-# motor 7 -> P6 => index 6
+# Chỉ cho 2 motor sau Hoạt động: motor 6 & 8  => P5, P7
+# Mapping motor ↔ P:
+#   motor 6 -> P5 -> index 5
+#   motor 8 -> P7 -> index 7
 MOVE_LEG_INDEXES = [5, 7]
-
-# Hướng từng chân P0..P7: +1 bình thường, -1 đảo chiều
-# Theo setup ban đầu: motor 3 và 7 ngược => P2 và P6 = -1
-LEG_DIR = [
-    1,   # P0 (motor 1)
-    1,   # P1 (motor 2)
-   -1,   # P2 (motor 3)  (reversed)
-    1,   # P3 (motor 4)
-    1,   # P4 (motor 5)  (bình thường)
-  -1,   # P5 (motor 6)
-   -1,   # P6 (motor 7)  (reversed)
-    1    # P7 (motor 8)
-]
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
@@ -75,14 +62,17 @@ def load_pose_file(path: Path) -> dict:
 
 def make_stand_selective(sit: dict) -> dict:
     """
-    Chỉ move P4 và P6 (motor 5 và 7); các chân khác giữ nguyên.
-    Hướng từng chân lấy từ LEG_DIR.
+    Tạo tư thế đứng từ tư thế ngồi:
+
+    - Chỉ move P5 và P7 (motor 6 & 8).
+    - Dựa theo test: +20 = lên trời, -20 = xuống đất
+      => Để chân "quỳ xuống đất", ta GIẢM góc (sit[p] - LEG_DELTA).
     """
     stand = dict(sit)
     for i in range(8):  # P0..P7
         p = f"P{i}"
         if i in MOVE_LEG_INDEXES:
-            stand[p] = clamp(sit[p] + LEG_DIR[i] * LEG_DELTA)
+            stand[p] = clamp(sit[p] - LEG_DELTA)   # move xuống đất
         else:
             stand[p] = sit[p]
     return stand
@@ -128,36 +118,35 @@ def legs_list(pose: dict):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # ==== BƯỚC 1: LOAD FILE CONFIG + ĐƯA ROBOT VỀ ĐÚNG VỊ TRÍ ====
+    # ==== BƯỚC 1: LOAD FILE CONFIG + ĐƯA ROBOT VỀ ĐÚNG VỊ TRÍ (NGỒI) ====
     sit_pose = load_pose_file(POSE_FILE)
     stand_pose = make_stand_selective(sit_pose)
 
     print("Loaded SIT pose from:", POSE_FILE)
     print("MOVE_LEG_INDEXES (index P0..P7):", MOVE_LEG_INDEXES)
-    print("=> Move motors (1-based):", [i+1 for i in MOVE_LEG_INDEXES])
-    print("Reversed motors (theo LEG_DIR = -1):", [i+1 for i, d in enumerate(LEG_DIR) if d == -1])
+    print("=> Move motors (1-based):", [i + 1 for i in MOVE_LEG_INDEXES])   # nên ra [6, 8]
     print("LEG_DELTA:", LEG_DELTA)
     print("SIT legs  (P0..P7):", legs_list(sit_pose))
     print("STAND legs(P0..P7):", legs_list(stand_pose))
     print("HEAD baseline", HEAD_PORT, "=", sit_pose[HEAD_PORT], "| swing ±", HEAD_SWING)
     print()
 
-    # Đưa tất cả servo về pose trong file config (tư thế ngồi mới)
+    # Đưa tất cả servo về pose trong file config (tư thế ngồi)
     apply_pose(servos, sit_pose)
     sleep(RESET_HOLD_SEC)
 
     # ==== BƯỚC 2: ĐỨNG LÊN / NGỒI XUỐNG / LẮC ĐẦU NHẸ ====
     for _ in range(REPS):
-        # từ ngồi -> đứng (chỉ P4, P6 khác nên chỉ 2 chân sau chạy)
+        # từ ngồi -> đứng (P5, P7 hạ xuống đất)
         move_pose(servos, sit_pose, stand_pose)
         sleep(0.2)
-        head_swing(servos, stand_pose)   # lắc đầu khi đang đứng
+        head_swing(servos, stand_pose)
         sleep(STAND_HOLD_SEC)
 
         # từ đứng -> ngồi lại
         move_pose(servos, stand_pose, sit_pose)
         sleep(0.2)
-        head_swing(servos, sit_pose)     # lắc đầu khi đang ngồi
+        head_swing(servos, sit_pose)
         sleep(SIT_HOLD_SEC)
 
     # cuối cùng trả về tư thế ngồi gốc
