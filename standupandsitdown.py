@@ -9,9 +9,6 @@ from robot_hat import Servo
 # === File pose NGỒI ở thư mục hiện tại ===
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
-# ===== tham số chuyển động =====
-REPS = 3
-
 RESET_HOLD_SEC = 0.8
 STAND_HOLD_SEC = 0.8
 SIT_HOLD_SEC = 0.8
@@ -22,7 +19,7 @@ STEP_DELAY = 0.02
 CLAMP_LO, CLAMP_HI = -90, 90
 PORTS = [f"P{i}" for i in range(12)]  # P0..P11
 
-# ===== TƯ THẾ ĐỨNG CHUẨN (theo hình anh gửi) =====
+# ===== TƯ THẾ ĐỨNG CHUẨN (theo hình bạn gửi) =====
 STAND_TEMPLATE = {
     "P0":  32,
     "P1":  39,
@@ -32,15 +29,14 @@ STAND_TEMPLATE = {
     "P5":  65,
     "P6":  15,
     "P7": -74,
-    # đầu và đuôi nếu muốn dùng luôn theo hình:
     "P8": -29,   # head yaw
     "P9":  90,   # head roll
     "P10": -90,  # head pitch
     "P11":  0,   # tail
 }
 
-# ===== Head (có thể dùng lại để lắc nhẹ) =====
-HEAD_PORT = "P8"   # anh có thể đổi nếu muốn
+# ===== Head (lắc nhẹ, dùng yaw P8) =====
+HEAD_PORT = "P8"
 HEAD_SWING = 15
 HEAD_HOLD_SEC = 0.25
 
@@ -70,7 +66,7 @@ def make_stand_pose_from_sit(sit: dict) -> dict:
     """
     Tạo tư thế ĐỨNG từ tư thế NGỒI:
     - Lấy sit_pose làm base.
-    - Ghi đè lại P0..P7 (và P8..P11 nếu có trong template) theo STAND_TEMPLATE.
+    - Ghi đè lại P0..P7 (và đầu/đuôi nếu có trong template) theo STAND_TEMPLATE.
     """
     stand = dict(sit)
     for k, v in STAND_TEMPLATE.items():
@@ -122,12 +118,12 @@ def legs_list(pose: dict):
 
 
 def main():
-    # khởi tạo servo
     servos = {p: Servo(p) for p in PORTS}
 
-    # load tư thế NGỒI từ file
+    # 1) LOAD tư thế NGỒI từ file config
     sit_pose = load_pose_file(POSE_FILE)
-    # tạo tư thế ĐỨNG theo template
+
+    # 2) Tạo tư thế ĐỨNG từ template
     stand_pose = make_stand_pose_from_sit(sit_pose)
 
     print("Loaded SIT pose from:", POSE_FILE)
@@ -135,33 +131,32 @@ def main():
     print("STAND legs(P0..P7):", legs_list(stand_pose))
     print()
 
-    # Đưa robot về tư thế NGỒI chuẩn
+    # 3) ĐƯA ROBOT VỀ TƯ THẾ NGỒI TRONG FILE
     apply_pose(servos, sit_pose)
-    sleep(RESET_HOLD_SEC)
+    sleep(RESET_HOLD_SEC)   # lúc này robot NGỒI đúng config
 
     front_legs = [0, 1, 2, 3]
     rear_legs  = [4, 5, 6, 7]
 
-    for _ in range(REPS):
-        # ===== NGỒI -> ĐỨNG =====
-        # 1) chỉnh chân trước trước
-        move_legs_group(servos, sit_pose, stand_pose, front_legs)
-        sleep(0.1)
-        # 2) sau đó mới chỉnh chân sau
-        move_legs_group(servos, sit_pose, stand_pose, rear_legs)
-        sleep(0.2)
-        head_swing(servos, stand_pose)
-        sleep(STAND_HOLD_SEC)
+    # 4) NGỒI -> ĐỨNG
+    # 4.1 chỉnh chân trước trước
+    move_legs_group(servos, sit_pose, stand_pose, front_legs)
+    sleep(0.1)
+    # 4.2 rồi mới chỉnh chân sau
+    move_legs_group(servos, sit_pose, stand_pose, rear_legs)
+    sleep(0.2)
+    head_swing(servos, stand_pose)
+    sleep(STAND_HOLD_SEC)
 
-        # ===== ĐỨNG -> NGỒI ===== (làm ngược lại: chân sau rồi chân trước)
-        move_legs_group(servos, stand_pose, sit_pose, rear_legs)
-        sleep(0.1)
-        move_legs_group(servos, stand_pose, sit_pose, front_legs)
-        sleep(0.2)
-        head_swing(servos, sit_pose)
-        sleep(SIT_HOLD_SEC)
+    # 5) ĐỨNG -> NGỒI LẠI (nếu bạn muốn cho nó ngồi xuống)
+    move_legs_group(servos, stand_pose, sit_pose, rear_legs)
+    sleep(0.1)
+    move_legs_group(servos, stand_pose, sit_pose, front_legs)
+    sleep(0.2)
+    head_swing(servos, sit_pose)
+    sleep(SIT_HOLD_SEC)
 
-    # Trả về tư thế ngồi
+    # 6) Kết thúc ở tư thế NGỒI
     apply_pose(servos, sit_pose)
     sleep(0.3)
 
