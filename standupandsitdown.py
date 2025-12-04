@@ -29,7 +29,7 @@ IDX_P7 = 7   # P7 (motor 8)
 # Giờ mình set giống nhau:
 #   +delta = quay xuống đất  (cả P5 và P7)
 DOWN_DIR_P5 =  1   # P5: xuống đất = base + delta
-DOWN_DIR_P7 =  1   # P7: xuống đất = base + delta
+DOWN_DIR_P7 =  -1   # P7: xuống đất = base + delta
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
