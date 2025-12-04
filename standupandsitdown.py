@@ -35,9 +35,9 @@ LEG_DIR = [
    -1,   # P2 (motor 3)  (reversed)
     1,   # P3 (motor 4)
     1,   # P4 (motor 5)  (bình thường)
-    1,   # P5 (motor 6)
+  -1,   # P5 (motor 6)
    -1,   # P6 (motor 7)  (reversed)
-    -1    # P7 (motor 8)
+    1    # P7 (motor 8)
 ]
 
 # ===== Head using channel 10 (P10) =====
