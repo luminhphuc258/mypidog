@@ -6,31 +6,38 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# === Dùng file config ở THƯ MỤC HIỆN TẠI (current working directory) ===
+# === File pose ở THƯ MỤC HIỆN TẠI ===
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
-# ===== chỉnh nhanh =====
+# ===== tham số chuyển động =====
 REPS = 3
 
 RESET_HOLD_SEC = 0.8
 STAND_HOLD_SEC = 0.8
 SIT_HOLD_SEC = 0.8
 
-MOVE_STEPS = 30
+MOVE_STEPS = 25       # bước nội suy
 STEP_DELAY = 0.02
 
-LEG_DELTA = 70  # đổi góc 70 độ
+LEG_DELTA = 40        # góc thay đổi (giảm bớt cho đỡ bật ngửa)
 
-# Chỉ cho 2 motor sau hoạt động: motor 6 & 8  => P5, P7
-# Mapping motor ↔ P:
-#   motor 6 -> P5 -> index 5
-#   motor 8 -> P7 -> index 7
-MOVE_LEG_INDEXES = [5, 7]
+# Chỉ motor 6 & 8: P5, P7
+IDX_P5 = 5   # P5 (motor 6)
+IDX_P7 = 7   # P7 (motor 8)
+
+# ===== Hướng quay xuống đất của từng servo =====
+# DỰA TRÊN TEST CỦA ANH:
+# - Nếu +20 = quay lên trời, -20 = quay xuống đất => DOWN_DIR = -1
+#
+# Nếu anh test lại mà thấy:
+#   +20 = xuống đất, -20 = lên trời => đổi thành +1
+DOWN_DIR_P5 = -1   # hướng xuống đất cho P5
+DOWN_DIR_P7 = -1   # hướng xuống đất cho P7
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
-HEAD_SWING = 25
-HEAD_HOLD_SEC = 0.35
+HEAD_SWING = 20
+HEAD_HOLD_SEC = 0.3
 
 CLAMP_LO, CLAMP_HI = -90, 90
 PORTS = [f"P{i}" for i in range(12)]  # P0..P11
@@ -45,10 +52,6 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
 
 
 def load_pose_file(path: Path) -> dict:
-    """
-    Đọc file pose dạng JSON {'P0':0,...,'P11':0} ở thư mục hiện tại.
-    Nếu không có file -> báo lỗi (để anh biết phải chạy tool chỉnh servo trước).
-    """
     if not path.exists():
         raise FileNotFoundError(f"Không thấy file pose: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -60,27 +63,21 @@ def load_pose_file(path: Path) -> dict:
     return out
 
 
-def make_stand_selective(sit: dict) -> dict:
+def make_stand_from_sit(sit: dict) -> dict:
     """
     Tạo tư thế đứng từ tư thế ngồi.
-
-    Dựa trên quan sát mới nhất:
-      - Code cũ: P5 dùng (sit - LEG_DELTA), P7 dùng (sit + LEG_DELTA)
-        => CẢ HAI đều quay lên trời.
-      => suy ra:
-         * Để QUAY XUỐNG ĐẤT:
-           - P5 phải tăng góc (sit + LEG_DELTA)
-           - P7 phải giảm góc (sit - LEG_DELTA)
+    Chỉ chỉnh P5 & P7, các chân khác giữ nguyên.
     """
     stand = dict(sit)
-    for i in range(8):  # P0..P7
-        p = f"P{i}"
-        if i == 5:  # motor 6, P5 -> xuống đất = +LEG_DELTA
-            stand[p] = clamp(sit[p] + LEG_DELTA)
-        elif i == 7:  # motor 8, P7 -> xuống đất = -LEG_DELTA
-            stand[p] = clamp(sit[p] - LEG_DELTA)
-        else:
-            stand[p] = sit[p]
+
+    # P5 (motor 6) – dùng hướng DOWN_DIR_P5
+    p = f"P{IDX_P5}"
+    stand[p] = clamp(sit[p] + DOWN_DIR_P5 * LEG_DELTA)
+
+    # P7 (motor 8) – dùng hướng DOWN_DIR_P7
+    p = f"P{IDX_P7}"
+    stand[p] = clamp(sit[p] + DOWN_DIR_P7 * LEG_DELTA)
+
     return stand
 
 
@@ -93,7 +90,8 @@ def apply_pose(servos: dict, pose: dict):
         servos[p].angle(clamp(pose[p]))
 
 
-def move_pose(servos: dict, pose_from: dict, pose_to: dict, steps=MOVE_STEPS, step_delay=STEP_DELAY):
+def move_pose(servos: dict, pose_from: dict, pose_to: dict,
+              steps=MOVE_STEPS, step_delay=STEP_DELAY):
     for s in range(1, steps + 1):
         t = s / steps
         for p in PORTS:
@@ -103,18 +101,15 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict, steps=MOVE_STEPS, st
 
 
 def head_swing(servos: dict, base_pose: dict, port=HEAD_PORT, swing=HEAD_SWING):
-    """
-    Lắc đầu nhẹ quanh góc trong pose.
-    """
     base = clamp(base_pose[port])
     left = clamp(base - swing)
     right = clamp(base + swing)
 
-    servos[port].angle(base);  sleep(0.12)
+    servos[port].angle(base);  sleep(0.1)
     servos[port].angle(left);  sleep(HEAD_HOLD_SEC)
-    servos[port].angle(base);  sleep(0.12)
+    servos[port].angle(base);  sleep(0.1)
     servos[port].angle(right); sleep(HEAD_HOLD_SEC)
-    servos[port].angle(base);  sleep(0.12)
+    servos[port].angle(base);  sleep(0.1)
 
 
 def legs_list(pose: dict):
@@ -124,38 +119,36 @@ def legs_list(pose: dict):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # ==== BƯỚC 1: LOAD FILE CONFIG + ĐƯA ROBOT VỀ ĐÚNG VỊ TRÍ (NGỒI) ====
     sit_pose = load_pose_file(POSE_FILE)
-    stand_pose = make_stand_selective(sit_pose)
+    stand_pose = make_stand_from_sit(sit_pose)
 
     print("Loaded SIT pose from:", POSE_FILE)
-    print("MOVE_LEG_INDEXES (index P0..P7):", MOVE_LEG_INDEXES)
-    print("=> Move motors (1-based):", [i + 1 for i in MOVE_LEG_INDEXES])   # nên ra [6, 8]
+    print("P5 (motor 6) sit/stand:", sit_pose["P5"], "->", stand_pose["P5"],
+          "| DOWN_DIR_P5 =", DOWN_DIR_P5)
+    print("P7 (motor 8) sit/stand:", sit_pose["P7"], "->", stand_pose["P7"],
+          "| DOWN_DIR_P7 =", DOWN_DIR_P7)
     print("LEG_DELTA:", LEG_DELTA)
     print("SIT legs  (P0..P7):", legs_list(sit_pose))
     print("STAND legs(P0..P7):", legs_list(stand_pose))
-    print("HEAD baseline", HEAD_PORT, "=", sit_pose[HEAD_PORT], "| swing ±", HEAD_SWING)
     print()
 
-    # Đưa tất cả servo về pose trong file config (tư thế ngồi)
+    # Đưa về tư thế ngồi chuẩn từ file
     apply_pose(servos, sit_pose)
     sleep(RESET_HOLD_SEC)
 
-    # ==== BƯỚC 2: ĐỨNG LÊN / NGỒI XUỐNG / LẮC ĐẦU NHẸ ====
     for _ in range(REPS):
-        # từ ngồi -> đứng
+        # Ngồi -> đứng
         move_pose(servos, sit_pose, stand_pose)
         sleep(0.2)
         head_swing(servos, stand_pose)
         sleep(STAND_HOLD_SEC)
 
-        # từ đứng -> ngồi lại
+        # Đứng -> ngồi
         move_pose(servos, stand_pose, sit_pose)
         sleep(0.2)
         head_swing(servos, sit_pose)
         sleep(SIT_HOLD_SEC)
 
-    # cuối cùng trả về tư thế ngồi gốc
     apply_pose(servos, sit_pose)
     sleep(0.3)
 
