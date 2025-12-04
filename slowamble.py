@@ -62,7 +62,7 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict,
         sleep(step_delay)
 
 
-# ============== 4 STEP MỚI (TỪ 4 HÌNH) ==============
+# ============== 4 STEP MỚI (từ 4 hình) ==============
 
 # Hình 1
 STEP1 = {
@@ -73,22 +73,22 @@ STEP1 = {
 
 # Hình 2
 STEP2 = {
-    "P0": 52, "P1": -19, "P2": -49, "P3": 29,
-    "P4": 48, "P5": 72,  "P6": -40, "P7": -60,
+    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
+    "P4": 48, "P5": 90,  "P6": -36, "P7": -90,
     "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
 # Hình 3
 STEP3 = {
-    "P0": 49, "P1": 18, "P2": -50, "P3": -2,
-    "P4": 48, "P5": 72, "P6": -40, "P7": -60,
+    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
+    "P4": -37, "P5": 90, "P6": -36, "P7": -90,
     "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
 # Hình 4
 STEP4 = {
-    "P0": 49, "P1": 18, "P2": -50, "P3": -2,
-    "P4": -5, "P5": 72, "P6": 10, "P7": -55,
+    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
+    "P4": 3,  "P5": 90,  "P6": 14, "P7": -90,
     "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
@@ -102,30 +102,4 @@ def gait_4steps(servos: dict, base_pose: dict, cycles: int = CYCLES):
 
     # 2) config -> STEP1 (setup mềm)
     move_pose(servos, base_pose, STEPS[0],
-              steps=SETUP_STEPS, step_delay=SETUP_DELAY)
-    current = STEPS[0]
-    sleep(0.05)
-
-    # 3) loop 4 bước nhanh & mượt
-    for _ in range(cycles):
-        for i in range(len(STEPS)):
-            nxt = STEPS[(i + 1) % len(STEPS)]  # 1→2→3→4→1→…
-            move_pose(servos, current, nxt,
-                      steps=MOVE_STEPS, step_delay=STEP_DELAY)
-            if STEP_HOLD > 0:
-                sleep(STEP_HOLD)
-            current = nxt
-
-
-def main():
-    servos = {p: Servo(p) for p in PORTS}
-
-    base_pose = load_pose_file(POSE_FILE)
-    gait_4steps(servos, base_pose, cycles=CYCLES)
-
-    # nếu muốn khi kết thúc quay lại pose config thì mở dòng sau:
-    # apply_pose(servos, base_pose)
-
-
-if __name__ == "__main__":
-    main()
+              steps=SETUP_STEPS_
