@@ -6,17 +6,18 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# ================== CẤU HÌNH CHUNG ==================
+# ============== CẤU HÌNH CHUNG ==============
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-MOVE_STEPS = 30      # nội suy giữa 2 pose
-STEP_DELAY = 0.02    # delay giữa các bước nội suy
-STEP_HOLD = 2.0      # GIỮ mỗi step 2 giây để test
+# Nội suy giữa các pose (nhanh, ít bước để có lực hơn)
+MOVE_STEPS = 10        # càng nhỏ → chuyển càng nhanh
+STEP_DELAY = 0.01      # delay giữa mỗi bước nội suy
+STEP_HOLD = 0.02       # thời gian “nghỉ” ở mỗi step (rất nhỏ)
 
-CYCLES = 20          # số vòng lặp 4 step (bạn chỉnh tùy ý)
+CYCLES = 50            # số vòng lặp 4 step
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -48,7 +49,7 @@ def apply_pose(servos: dict, pose: dict):
 
 def move_pose(servos: dict, pose_from: dict, pose_to: dict,
               steps=MOVE_STEPS, step_delay=STEP_DELAY):
-    """Nội suy mượt từ pose_from -> pose_to."""
+    """Nội suy nhanh từ pose_from -> pose_to."""
     for s in range(1, steps + 1):
         t = s / steps
         for p in PORTS:
@@ -57,7 +58,8 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict,
         sleep(step_delay)
 
 
-# ================== 4 STEP (TỪ HÌNH 1–4) ==================
+# ============== 4 STEP THEO HÌNH 1–4 ==============
+
 # Hình 1
 STEP1 = {
     "P0": -28, "P1": 82, "P2": 43, "P3": -80,
@@ -89,21 +91,24 @@ STEP4 = {
 STEPS = [STEP1, STEP2, STEP3, STEP4]
 
 
-def gait_4steps(servos: dict, base_pose: dict, cycles: int = CYCLES):
-    # 1) Load & apply pose từ config
-    apply_pose(servos, base_pose)
-    sleep(1.0)
+def gait_4steps(servos: dict, start_pose: dict, cycles: int = CYCLES):
+    """
+    1. robot đã ở pose config (do main() apply trước)
+    2. từ pose config → STEP1
+    3. loop STEP1 → STEP2 → STEP3 → STEP4 → STEP1 ...
+    """
 
-    # 2) Từ config -> STEP1
-    move_pose(servos, base_pose, STEPS[0])
+    current = dict(start_pose)
+
+    # pose config -> STEP1
+    move_pose(servos, current, STEPS[0])
     sleep(STEP_HOLD)
-
     current = STEPS[0]
 
-    # 3) Loop 4 bước
+    # loop 4 bước
     for _ in range(cycles):
         for i in range(len(STEPS)):
-            nxt = STEPS[(i + 1) % len(STEPS)]  # 1→2→3→4→1→…
+            nxt = STEPS[(i + 1) % len(STEPS)]  # 1→2→3→4→1→...
             move_pose(servos, current, nxt)
             sleep(STEP_HOLD)
             current = nxt
@@ -112,10 +117,15 @@ def gait_4steps(servos: dict, base_pose: dict, cycles: int = CYCLES):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
+    # 1) LOAD & APPLY pose từ file config NGAY KHI BẮT ĐẦU
     base_pose = load_pose_file(POSE_FILE)
+    apply_pose(servos, base_pose)
+    sleep(0.5)
+
+    # 2) Bắt đầu loop 4 step
     gait_4steps(servos, base_pose, cycles=CYCLES)
 
-    # nếu muốn kết thúc quay lại pose config thì bỏ comment dòng dưới
+    # Nếu muốn kết thúc quay lại pose config thì bỏ comment dòng dưới:
     # apply_pose(servos, base_pose)
 
 
