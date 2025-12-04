@@ -22,19 +22,22 @@ STEP_DELAY = 0.02
 LEG_DELTA = 70  # đổi góc 70 độ
 
 # Motor được phép di chuyển tạm thời: chỉ motor 5 và 7  => P4, P6
-MOVE_LEG_INDEXES = [6, 8, 5, 7]
+# index theo P0..P7 => motor 1..8
+# motor 5 -> P4 => index 4
+# motor 7 -> P6 => index 6
+MOVE_LEG_INDEXES = [4, 6]
 
 # Hướng từng chân P0..P7: +1 bình thường, -1 đảo chiều
-# Motor 3 và 7 ngược => P2 và P6 = -1
+# Theo setup ban đầu: motor 3 và 7 ngược => P2 và P6 = -1
 LEG_DIR = [
     1,   # P0 (motor 1)
     1,   # P1 (motor 2)
    -1,   # P2 (motor 3)  (reversed)
     1,   # P3 (motor 4)
-    -1,   # P4 (motor 5)
-    -1,   # P5 (motor 6)
+    1,   # P4 (motor 5)  (bình thường)
+    1,   # P5 (motor 6)
    -1,   # P6 (motor 7)  (reversed)
-    -1    # P7 (motor 8)
+    1    # P7 (motor 8)
 ]
 
 # ===== Head using channel 10 (P10) =====
@@ -76,7 +79,7 @@ def make_stand_selective(sit: dict) -> dict:
     Hướng từng chân lấy từ LEG_DIR.
     """
     stand = dict(sit)
-    for i in range(8):
+    for i in range(8):  # P0..P7
         p = f"P{i}"
         if i in MOVE_LEG_INDEXES:
             stand[p] = clamp(sit[p] + LEG_DIR[i] * LEG_DELTA)
@@ -130,8 +133,9 @@ def main():
     stand_pose = make_stand_selective(sit_pose)
 
     print("Loaded SIT pose from:", POSE_FILE)
-    print("Move motors: 5,7 => ports:", [f"P{i}" for i in MOVE_LEG_INDEXES])
-    print("Reversed motors: 3,7 => ports: P2, P6")
+    print("MOVE_LEG_INDEXES (index P0..P7):", MOVE_LEG_INDEXES)
+    print("=> Move motors (1-based):", [i+1 for i in MOVE_LEG_INDEXES])
+    print("Reversed motors (theo LEG_DIR = -1):", [i+1 for i, d in enumerate(LEG_DIR) if d == -1])
     print("LEG_DELTA:", LEG_DELTA)
     print("SIT legs  (P0..P7):", legs_list(sit_pose))
     print("STAND legs(P0..P7):", legs_list(stand_pose))
