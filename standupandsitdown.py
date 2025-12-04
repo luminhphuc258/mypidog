@@ -21,7 +21,7 @@ STEP_DELAY = 0.02
 
 LEG_DELTA = 70  # đổi góc 70 độ
 
-# Chỉ cho 2 motor sau Hoạt động: motor 6 & 8  => P5, P7
+# Chỉ cho 2 motor sau hoạt động: motor 6 & 8  => P5, P7
 # Mapping motor ↔ P:
 #   motor 6 -> P5 -> index 5
 #   motor 8 -> P7 -> index 7
@@ -62,17 +62,28 @@ def load_pose_file(path: Path) -> dict:
 
 def make_stand_selective(sit: dict) -> dict:
     """
-    Tạo tư thế đứng từ tư thế ngồi:
+    Tạo tư thế đứng từ tư thế ngồi.
 
-    - Chỉ move P5 và P7 (motor 6 & 8).
-    - Dựa theo test: +20 = lên trời, -20 = xuống đất
-      => Để chân "quỳ xuống đất", ta GIẢM góc (sit[p] - LEG_DELTA).
+    Theo test:
+      - +20 = quay lên trời
+      - -20 = quay xuống đất
+
+    Nhưng thực tế:
+      - Motor 6 (P5) => dùng -LEG_DELTA thì quay xuống đất (OK)
+      - Motor 8 (P7) => dùng -LEG_DELTA lại quay lên trời (ngược)
+        => P7 phải dùng +LEG_DELTA để quay xuống đất.
+
+    => Xử lý riêng:
+        - i == 5 (P5 / motor 6): sit[p] - LEG_DELTA
+        - i == 7 (P7 / motor 8): sit[p] + LEG_DELTA
     """
     stand = dict(sit)
     for i in range(8):  # P0..P7
         p = f"P{i}"
-        if i in MOVE_LEG_INDEXES:
-            stand[p] = clamp(sit[p] - LEG_DELTA)   # move xuống đất
+        if i == 5:  # motor 6, P5: -LEG_DELTA => xuống đất
+            stand[p] = clamp(sit[p] - LEG_DELTA)
+        elif i == 7:  # motor 8, P7: +LEG_DELTA => xuống đất (do bị đảo)
+            stand[p] = clamp(sit[p] + LEG_DELTA)
         else:
             stand[p] = sit[p]
     return stand
@@ -137,7 +148,7 @@ def main():
 
     # ==== BƯỚC 2: ĐỨNG LÊN / NGỒI XUỐNG / LẮC ĐẦU NHẸ ====
     for _ in range(REPS):
-        # từ ngồi -> đứng (P5, P7 hạ xuống đất)
+        # từ ngồi -> đứng
         move_pose(servos, sit_pose, stand_pose)
         sleep(0.2)
         head_swing(servos, stand_pose)
