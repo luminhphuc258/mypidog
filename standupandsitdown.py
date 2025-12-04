@@ -26,10 +26,10 @@ IDX_P5 = 5   # P5 (motor 6)
 IDX_P7 = 7   # P7 (motor 8)
 
 # ===== Hướng quay xuống đất của từng servo =====
-# P5: anh đã test thấy quay xuống đất đúng với DOWN_DIR_P5 = -1
-# P7: đang bị ngược, nên đổi xuống đất = +1
-DOWN_DIR_P5 = -1   # P5: xuống đất = giảm góc (base - delta)
-DOWN_DIR_P7 =  1   # P7: xuống đất = tăng góc (base + delta)
+# Giờ mình set giống nhau:
+#   +delta = quay xuống đất  (cả P5 và P7)
+DOWN_DIR_P5 =  1   # P5: xuống đất = base + delta
+DOWN_DIR_P7 =  1   # P7: xuống đất = base + delta
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
@@ -67,11 +67,11 @@ def make_stand_from_sit(sit: dict) -> dict:
     """
     stand = dict(sit)
 
-    # P5 (motor 6) – xuống đất = sit + DOWN_DIR_P5 * LEG_DELTA = sit - LEG_DELTA
+    # P5 (motor 6) – xuống đất = sit + DOWN_DIR_P5 * LEG_DELTA
     p = f"P{IDX_P5}"
     stand[p] = clamp(sit[p] + DOWN_DIR_P5 * LEG_DELTA)
 
-    # P7 (motor 8) – xuống đất = sit + DOWN_DIR_P7 * LEG_DELTA = sit + LEG_DELTA
+    # P7 (motor 8) – xuống đất = sit + DOWN_DIR_P7 * LEG_DELTA
     p = f"P{IDX_P7}"
     stand[p] = clamp(sit[p] + DOWN_DIR_P7 * LEG_DELTA)
 
