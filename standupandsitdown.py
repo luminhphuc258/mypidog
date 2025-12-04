@@ -19,17 +19,12 @@ SIT_HOLD_SEC = 0.8
 MOVE_STEPS = 25       # bước nội suy
 STEP_DELAY = 0.02
 
-LEG_DELTA = 40        # góc thay đổi, có thể chỉnh 30–60 tuỳ ý
-
-# Chỉ motor 6 & 8: P5, P7
-IDX_P5 = 5   # P5 (motor 6)
-IDX_P7 = 7   # P7 (motor 8)
-
-# ===== Hướng quay xuống đất của từng servo =====
-# Giờ mình set giống nhau:
-#   +delta = quay xuống đất  (cả P5 và P7)
-DOWN_DIR_P5 =  1   # P5: xuống đất = base + delta
-DOWN_DIR_P7 =  -1   # P7: xuống đất = base + delta
+# 🔧 QUAN TRỌNG: 2 giá trị này quyết định tư thế ĐỨNG
+#   - DELTA_P5: cộng vào góc của P5 (motor 6)
+#   - DELTA_P7: cộng vào góc của P7 (motor 8)
+# GỢI Ý BAN ĐẦU: thử -40 cho cả hai (hoặc -30 nếu thấy mạnh quá).
+DELTA_P5 = -40      # thử: nếu chân quay ra sau, đổi thành +40
+DELTA_P7 = -40      # thử: nếu chân quay ra sau, đổi thành +40
 
 # ===== Head using channel 10 (P10) =====
 HEAD_PORT = "P10"
@@ -63,17 +58,16 @@ def load_pose_file(path: Path) -> dict:
 def make_stand_from_sit(sit: dict) -> dict:
     """
     Tạo tư thế đứng từ tư thế ngồi.
-    Chỉ chỉnh P5 & P7, các chân khác giữ nguyên.
+    Chỉ chỉnh P5 (motor 6) & P7 (motor 8),
+    các chân khác giữ nguyên giá trị trong file config.
     """
     stand = dict(sit)
 
-    # P5 (motor 6) – xuống đất = sit + DOWN_DIR_P5 * LEG_DELTA
-    p = f"P{IDX_P5}"
-    stand[p] = clamp(sit[p] + DOWN_DIR_P5 * LEG_DELTA)
+    # motor 6 -> P5
+    stand["P5"] = clamp(sit["P5"] + DELTA_P5)
 
-    # P7 (motor 8) – xuống đất = sit + DOWN_DIR_P7 * LEG_DELTA
-    p = f"P{IDX_P7}"
-    stand[p] = clamp(sit[p] + DOWN_DIR_P7 * LEG_DELTA)
+    # motor 8 -> P7
+    stand["P7"] = clamp(sit["P7"] + DELTA_P7)
 
     return stand
 
@@ -121,10 +115,9 @@ def main():
 
     print("Loaded SIT pose from:", POSE_FILE)
     print("P5 (motor 6) sit/stand:", sit_pose["P5"], "->", stand_pose["P5"],
-          "| DOWN_DIR_P5 =", DOWN_DIR_P5)
+          "| DELTA_P5 =", DELTA_P5)
     print("P7 (motor 8) sit/stand:", sit_pose["P7"], "->", stand_pose["P7"],
-          "| DOWN_DIR_P7 =", DOWN_DIR_P7)
-    print("LEG_DELTA:", LEG_DELTA)
+          "| DELTA_P7 =", DELTA_P7)
     print("SIT legs  (P0..P7):", legs_list(sit_pose))
     print("STAND legs(P0..P7):", legs_list(stand_pose))
     print()
