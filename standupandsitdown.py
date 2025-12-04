@@ -25,7 +25,7 @@ LEG_DELTA = 70  # đổi góc 70 độ
 # index theo P0..P7 => motor 1..8
 # motor 5 -> P4 => index 4
 # motor 7 -> P6 => index 6
-MOVE_LEG_INDEXES = [4, 6]
+MOVE_LEG_INDEXES = [5, 7]
 
 # Hướng từng chân P0..P7: +1 bình thường, -1 đảo chiều
 # Theo setup ban đầu: motor 3 và 7 ngược => P2 và P6 = -1
