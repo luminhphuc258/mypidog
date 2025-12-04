@@ -19,6 +19,23 @@ ANGLE_MAX = 90
 DEFAULT_STEP = 1
 DELAY_BETWEEN_WRITES = 0.01  # seconds
 
+# ==== TƯ THẾ CHUẨN: ROBOT NGỒI + ĐẦU NHÌN THẲNG ====
+# Lấy từ file ~/pidog/examples/pidog_pose_config.txt trong hình
+BASE_POSE_CONFIG = {
+       "P0": 0,
+    "P1": 18,
+    "P2": 4,
+    "P3": 0,
+    "P4": 8,
+    "P5": 17,
+    "P6": 3,
+    "P7": 4,
+    "P8": -32,   # head yaw
+    "P9": 90,    # head roll
+    "P10": -90,  # head pitch
+    "P11": 0,    # tail
+}
+
 
 def clamp(v, lo=ANGLE_MIN, hi=ANGLE_MAX):
     try:
@@ -29,10 +46,22 @@ def clamp(v, lo=ANGLE_MIN, hi=ANGLE_MAX):
 
 
 def default_config():
-    return {port: 0 for port in SERVO_PORTS}
+    """
+    Config mặc định = tư thế chuẩn (ngồi + đầu thẳng).
+    Những servo không có trong BASE_POSE_CONFIG thì = 0.
+    """
+    cfg = {port: 0 for port in SERVO_PORTS}
+    for k, v in BASE_POSE_CONFIG.items():
+        if k in cfg:
+            cfg[k] = clamp(v)
+    return cfg
 
 
 def load_config(path: Path):
+    """
+    Nếu file chưa tồn tại hoặc bị lỗi => trả về default_config()
+    (tư thế chuẩn).
+    """
     if not path.exists():
         return default_config()
     try:
@@ -93,25 +122,21 @@ HELP_LINES = [
     "  a : apply (đẩy config xuống servo ngay)",
     "  s : save file config",
     "  l : load file config",
-    "  q : quit",
+    "  q : quit (tự động lưu)",
 ]
 
 
 def port_label(i: int) -> str:
-    # hiển thị gợi ý mapping “thư viện”
-    # P0..P7 ~ legs 1..8
-    # P8..P10 ~ head 9,0,-
-    # P11 ~ tail =
     if 0 <= i <= 7:
         return f"P{i} (leg {i+1})"
     if i == 8:
-        return "P8 (head 9 yaw)"
+        return "P8 (head yaw)"
     if i == 9:
-        return "P9 (head 0 roll)"
+        return "P9 (head roll)"
     if i == 10:
-        return "P10 (head - pitch)"
+        return "P10 (head pitch)"
     if i == 11:
-        return "P11 (tail =)"
+        return "P11 (tail)"
     return f"P{i}"
 
 
@@ -122,8 +147,16 @@ def draw(stdscr, cfg: dict, idx: int, step: int, status: str, config_path: Path)
     title = f"Matthew PiDog Servo Editor  |  file: {config_path.name}"
     stdscr.addstr(0, 0, title[:w-1], curses.A_BOLD)
 
-    stdscr.addstr(1, 0, f"Running as UID={os.geteuid()}  (Tip: chạy sudo để điều khiển servo)", curses.A_DIM)
-    stdscr.addstr(2, 0, f"Current: {port_label(idx)}   angle={cfg[SERVO_PORTS[idx]]:+d}   STEP={step}", curses.A_BOLD)
+    stdscr.addstr(
+        1, 0,
+        f"Running as UID={os.geteuid()}  (Tip: chạy sudo để điều khiển servo)",
+        curses.A_DIM,
+    )
+    stdscr.addstr(
+        2, 0,
+        f"Current: {port_label(idx)}   angle={cfg[SERVO_PORTS[idx]]:+d}   STEP={step}",
+        curses.A_BOLD,
+    )
 
     # list ports
     start_y = 4
@@ -152,7 +185,7 @@ def draw(stdscr, cfg: dict, idx: int, step: int, status: str, config_path: Path)
 
     # status
     if status:
-        stdscr.addstr(h-1, 0, status[:w-1], curses.A_BOLD)
+        stdscr.addstr(h - 1, 0, status[:w-1], curses.A_BOLD)
 
     stdscr.refresh()
 
@@ -167,13 +200,23 @@ def main(stdscr):
     config_path = base_dir / CONFIG_FILE
 
     # init servos
-    # NOTE: robot_hat Servo cần quyền GPIO => thường phải chạy sudo
     servos = {port: Servo(port) for port in SERVO_PORTS}
 
+    # ==== LOAD CONFIG ====
     cfg = load_config(config_path)
+
+    # Nếu file chưa tồn tại thì tạo mới (tư thế chuẩn) để anh dễ cat xem
+    if not config_path.exists():
+        save_config(config_path, cfg)
+        status = (
+            f"Không thấy {config_path.name}, đã tạo file mới với tư thế chuẩn. "
+            "Nhấn 'a' để apply."
+        )
+    else:
+        status = "Loaded config từ file. Nhấn 'a' để apply tất cả, hoặc chỉnh từng servo."
+
     idx = 0
     step = DEFAULT_STEP
-    status = "Loaded config. Press 'a' to apply all servos, or start adjusting."
 
     draw(stdscr, cfg, idx, step, status, config_path)
 
@@ -181,7 +224,12 @@ def main(stdscr):
         key = stdscr.getch()
 
         if key in (ord("q"), ord("Q")):
-            status = "Quit."
+            # auto-save trước khi thoát
+            try:
+                save_config(config_path, cfg)
+                status = f"Quit. Đã auto-save -> {config_path}"
+            except Exception as e:
+                status = f"⚠️ Quit nhưng SAVE thất bại: {e}"
             draw(stdscr, cfg, idx, step, status, config_path)
             break
 
@@ -243,7 +291,7 @@ def main(stdscr):
         elif key in (ord("a"), ord("A")):
             try:
                 apply_all(servos, cfg)
-                status = "Applied ALL servos from current config."
+                status = "Applied ALL servos từ config hiện tại."
             except Exception as e:
                 status = f"⚠️ Apply ALL failed: {e} (try sudo?)"
 
@@ -256,7 +304,7 @@ def main(stdscr):
 
         elif key in (ord("l"), ord("L")):
             cfg = load_config(config_path)
-            status = f"Loaded <- {config_path} (press 'a' to apply)"
+            status = f"Loaded <- {config_path} (nhấn 'a' để apply)"
 
         else:
             status = f"(ignored key: {key})"
