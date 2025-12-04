@@ -22,7 +22,7 @@ STEP_DELAY = 0.02
 LEG_DELTA = 70  # đổi góc 70 độ
 
 # Motor được phép di chuyển tạm thời: chỉ motor 5 và 7  => P4, P6
-MOVE_LEG_INDEXES = [6, 8]
+MOVE_LEG_INDEXES = [7, 8]
 
 # Hướng từng chân P0..P7: +1 bình thường, -1 đảo chiều
 # Motor 3 và 7 ngược => P2 và P6 = -1
