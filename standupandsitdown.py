@@ -6,7 +6,8 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
+# === Dùng file config ở THƯ MỤC HIỆN TẠI (current working directory) ===
+POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
 # ===== chỉnh nhanh =====
 REPS = 3
@@ -54,6 +55,10 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
 
 
 def load_pose_file(path: Path) -> dict:
+    """
+    Đọc file pose dạng JSON {'P0':0,...,'P11':0} ở thư mục hiện tại.
+    Nếu không có file -> báo lỗi (để anh biết phải chạy tool chỉnh servo trước).
+    """
     if not path.exists():
         raise FileNotFoundError(f"Không thấy file pose: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -99,6 +104,9 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict, steps=MOVE_STEPS, st
 
 
 def head_swing(servos: dict, base_pose: dict, port=HEAD_PORT, swing=HEAD_SWING):
+    """
+    Lắc đầu nhẹ quanh góc trong pose.
+    """
     base = clamp(base_pose[port])
     left = clamp(base - swing)
     right = clamp(base + swing)
@@ -117,6 +125,7 @@ def legs_list(pose: dict):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
+    # ==== BƯỚC 1: LOAD FILE CONFIG + ĐƯA ROBOT VỀ ĐÚNG VỊ TRÍ ====
     sit_pose = load_pose_file(POSE_FILE)
     stand_pose = make_stand_selective(sit_pose)
 
@@ -129,24 +138,25 @@ def main():
     print("HEAD baseline", HEAD_PORT, "=", sit_pose[HEAD_PORT], "| swing ±", HEAD_SWING)
     print()
 
-    # Reset về pose chuẩn
+    # Đưa tất cả servo về pose trong file config
     apply_pose(servos, sit_pose)
     sleep(RESET_HOLD_SEC)
 
-    # Demo head ở tư thế ngồi
-    head_swing(servos, sit_pose)
-
+    # ==== BƯỚC 2: ĐỨNG LÊN / NGỒI XUỐNG / LẮC ĐẦU NHẸ ====
     for _ in range(REPS):
+        # từ ngồi -> đứng
         move_pose(servos, sit_pose, stand_pose)
         sleep(0.2)
-        head_swing(servos, stand_pose)
+        head_swing(servos, stand_pose)   # lắc đầu khi đang đứng
         sleep(STAND_HOLD_SEC)
 
+        # từ đứng -> ngồi
         move_pose(servos, stand_pose, sit_pose)
         sleep(0.2)
-        head_swing(servos, sit_pose)
+        head_swing(servos, sit_pose)     # lắc đầu khi đang ngồi
         sleep(SIT_HOLD_SEC)
 
+    # cuối cùng trả về tư thế ngồi gốc
     apply_pose(servos, sit_pose)
     sleep(0.3)
 
