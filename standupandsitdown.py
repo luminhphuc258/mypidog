@@ -64,26 +64,21 @@ def make_stand_selective(sit: dict) -> dict:
     """
     Tạo tư thế đứng từ tư thế ngồi.
 
-    Theo test:
-      - +20 = quay lên trời
-      - -20 = quay xuống đất
-
-    Nhưng thực tế:
-      - Motor 6 (P5) => dùng -LEG_DELTA thì quay xuống đất (OK)
-      - Motor 8 (P7) => dùng -LEG_DELTA lại quay lên trời (ngược)
-        => P7 phải dùng +LEG_DELTA để quay xuống đất.
-
-    => Xử lý riêng:
-        - i == 5 (P5 / motor 6): sit[p] - LEG_DELTA
-        - i == 7 (P7 / motor 8): sit[p] + LEG_DELTA
+    Dựa trên quan sát mới nhất:
+      - Code cũ: P5 dùng (sit - LEG_DELTA), P7 dùng (sit + LEG_DELTA)
+        => CẢ HAI đều quay lên trời.
+      => suy ra:
+         * Để QUAY XUỐNG ĐẤT:
+           - P5 phải tăng góc (sit + LEG_DELTA)
+           - P7 phải giảm góc (sit - LEG_DELTA)
     """
     stand = dict(sit)
     for i in range(8):  # P0..P7
         p = f"P{i}"
-        if i == 5:  # motor 6, P5: -LEG_DELTA => xuống đất
-            stand[p] = clamp(sit[p] - LEG_DELTA)
-        elif i == 7:  # motor 8, P7: +LEG_DELTA => xuống đất (do bị đảo)
+        if i == 5:  # motor 6, P5 -> xuống đất = +LEG_DELTA
             stand[p] = clamp(sit[p] + LEG_DELTA)
+        elif i == 7:  # motor 8, P7 -> xuống đất = -LEG_DELTA
+            stand[p] = clamp(sit[p] - LEG_DELTA)
         else:
             stand[p] = sit[p]
     return stand
