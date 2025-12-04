@@ -1,53 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
 from time import sleep
-from pathlib import Path
 from robot_hat import Servo
 
-POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
-
-REPS = 3
-RESET_HOLD_SEC = 0.8
-STAND_HOLD_SEC = 0.8
-SIT_HOLD_SEC = 0.8
-
-MOVE_STEPS = 25
-STEP_DELAY = 0.02
-
-DELTA_P5 = 90
-DELTA_P7 = -90
-
-HEAD_PORT = "P10"
-HEAD_SWING = 20
-HEAD_HOLD_SEC = 0.3
-
-CLAMP_LO, CLAMP_HI = -90, 90
+# ================== THAM SỐ CHUNG ==================
 PORTS = [f"P{i}" for i in range(12)]
+CLAMP_LO, CLAMP_HI = -90, 90
+
+MOVE_STEPS = 35      # số bước nội suy giữa 2 pose
+STEP_DELAY = 0.02    # delay giữa mỗi bước nội suy
+CYCLES = 5           # đi bao nhiêu vòng slow amble
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
-    try:
-        x = int(round(float(x)))
-    except Exception:
-        x = 0
-    return max(lo, min(hi, x))
-
-
-def load_pose_file(path: Path) -> dict:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    out = {}
-    for p in PORTS:
-        out[p] = clamp(data.get(p, 0))
-    return out
-
-
-def make_stand_from_sit(sit: dict) -> dict:
-    stand = dict(sit)
-    stand["P5"] = clamp(sit["P5"] + DELTA_P5)
-    stand["P7"] = clamp(sit["P7"] + DELTA_P7)
-    return stand
+    return max(lo, min(hi, int(x)))
 
 
 def lerp(a, b, t: float):
@@ -55,12 +22,14 @@ def lerp(a, b, t: float):
 
 
 def apply_pose(servos: dict, pose: dict):
+    """Set góc cho tất cả servo theo pose."""
     for p in PORTS:
         servos[p].angle(clamp(pose[p]))
 
 
 def move_pose(servos: dict, pose_from: dict, pose_to: dict,
               steps=MOVE_STEPS, step_delay=STEP_DELAY):
+    """Nội suy mượt từ pose_from -> pose_to."""
     for s in range(1, steps + 1):
         t = s / steps
         for p in PORTS:
@@ -69,114 +38,104 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict,
         sleep(step_delay)
 
 
-def head_swing(servos: dict, base_pose: dict, port=HEAD_PORT, swing=HEAD_SWING):
-    base = clamp(base_pose[port])
-    left = clamp(base - swing)
-    right = clamp(base + swing)
+# ===================================================
+#  MAPPING (để tham khảo)
+#  Motor 1  = chân trái trước  -> P1
+#  Motor 3  = chân phải trước  -> P3
+#  Motor 5  = chân trái sau    -> P5
+#  Motor 7  = chân phải sau    -> P7
+#  Motor 0,2,4,6 = khớp nối tương ứng
+#  Các pose dưới đây đã được bạn calibrate sẵn.
+# ===================================================
 
-    servos[port].angle(base);  sleep(0.1)
-    servos[port].angle(left);  sleep(HEAD_HOLD_SEC)
-    servos[port].angle(base);  sleep(0.1)
-    servos[port].angle(right); sleep(HEAD_HOLD_SEC)
-    servos[port].angle(base);  sleep(0.1)
+STEP1 = {
+    "P0": -27, "P1": 79, "P2": 43, "P3": -56,
+    "P4": 48,  "P5": 67, "P6": -45, "P7": -3,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
+STEP2 = {
+    "P0": -27, "P1": 82, "P2": 43, "P3": -85,
+    "P4": 48,  "P5": 36, "P6": -45, "P7": -32,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-# ---------------------------
-#  AMBLE WALK 9 STEP
-#  Motor mapping:
-#   Left Front  = P2
-#   Right Front = P6
-#   Left Rear   = P4
-#   Right Rear  = P8
-# ---------------------------
+STEP3 = {
+    "P0": 43, "P1": 79, "P2": 49, "P3": -90,
+    "P4": 48, "P5": 90, "P6": -45, "P7": -36,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-def make_amble_steps(base: dict):
-    """
-    Tạo 9 steps từ tư thế đứng chuẩn.
-    Chỉ thay đổi 4 motor chân: P2, P4, P6, P8
-    """
+STEP4 = {
+    "P0": 31, "P1": 79, "P2": 25, "P3": -90,
+    "P4": 66, "P5": 50, "P6": -60, "P7": -25,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-    steps = []
+STEP5 = {
+    "P0": -34, "P1": 79, "P2": 25, "P3": -90,
+    "P4": -14, "P5": 90, "P6": -60, "P7": -25,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-    # Helper tạo copy
-    def cp():
-        return dict(base)
+STEP6 = {
+    "P0": -23, "P1": 84, "P2": 17, "P3": -56,
+    "P4": 32,  "P5": 50, "P6": -35, "P7": -55,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-    # === STEP 1: LF + LR + RR chạm đất, RF đưa lên ===
-    s1 = cp()
-    s1["P6"] = clamp(base["P6"] - 25)   # RF lift forward
-    steps.append(s1)
+STEP7 = {
+    "P0": -23, "P1": 84, "P2": 2,  "P3": -56,
+    "P4": 32,  "P5": 50, "P6": -35, "P7": -90,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-    # === STEP 2: 4 chân chạm đất ===
-    s2 = cp()
-    steps.append(s2)
+STEP8 = {
+    "P0": -15, "P1": 84, "P2": -45, "P3": -58,
+    "P4": 40,  "P5": 54, "P6": 1,   "P7": -74,
+    "P8": -22, "P9": 90, "P10": -90, "P11": 0
+}
 
-    # === STEP 3: RF đặt xuống, RR đưa lên ===
-    s3 = cp()
-    s3["P8"] = clamp(base["P8"] - 25)
-    steps.append(s3)
+STEP9 = {
+    "P0": 29, "P1": 84, "P2": 15, "P3": -58,
+    "P4": 24, "P5": 65, "P6": -1, "P7": -74,
+    "P8": -22,"P9": 90, "P10": -90, "P11": 0
+}
 
-    # === STEP 4: 4 chân chạm ===
-    s4 = cp()
-    steps.append(s4)
+STEP10 = {
+    "P0": 29, "P1": 84, "P2": 15, "P3": -58,
+    "P4": 24, "P5": 65, "P6": -1, "P7": -74,
+    "P8": -22,"P9": 90, "P10": -90, "P11": 0
+}
 
-    # === STEP 5: RR xuống, LR đưa lên ===
-    s5 = cp()
-    s5["P4"] = clamp(base["P4"] - 25)
-    steps.append(s5)
-
-    # === STEP 6: 4 chân chạm ===
-    s6 = cp()
-    steps.append(s6)
-
-    # === STEP 7: LR xuống, LF đưa lên ===
-    s7 = cp()
-    s7["P2"] = clamp(base["P2"] - 25)
-    steps.append(s7)
-
-    # === STEP 8: 4 chân chạm ===
-    s8 = cp()
-    steps.append(s8)
-
-    # === STEP 9: reset lại step 1 nhẹ ===
-    s9 = cp()
-    s9["P6"] = clamp(base["P6"] - 25)
-    steps.append(s9)
-
-    return steps
+STEPS = [STEP1, STEP2, STEP3, STEP4, STEP5,
+         STEP6, STEP7, STEP8, STEP9, STEP10]
 
 
-def amble_walk(servos: dict, stand_pose: dict, loops=3):
-    steps = make_amble_steps(stand_pose)
+def slow_amble(servos: dict, cycles=CYCLES):
+    """Loop slow amble qua 10 bước, nội suy mượt giữa các pose."""
+    # đưa về step1 trước
+    apply_pose(servos, STEPS[0])
+    sleep(0.5)
 
-    for _ in range(loops):
-        for next_pose in steps:
-            move_pose(servos, stand_pose, next_pose, steps=MOVE_STEPS, step_delay=STEP_DELAY)
-            sleep(0.05)
-            move_pose(servos, next_pose, stand_pose, steps=MOVE_STEPS, step_delay=STEP_DELAY)
+    current = STEPS[0]
+
+    for _ in range(cycles):
+        for i in range(len(STEPS)):
+            nxt = STEPS[(i + 1) % len(STEPS)]
+            move_pose(servos, current, nxt)
+            current = nxt
 
 
 def main():
+    # Khởi tạo servo
     servos = {p: Servo(p) for p in PORTS}
 
-    sit_pose = load_pose_file(POSE_FILE)
-    stand_pose = make_stand_from_sit(sit_pose)
+    # Chạy slow amble
+    slow_amble(servos, cycles=CYCLES)
 
-    # Reset -> Sit pose
-    apply_pose(servos, sit_pose)
-    sleep(RESET_HOLD_SEC)
-
-    # SIT -> STAND
-    move_pose(servos, sit_pose, stand_pose)
-    sleep(0.3)
-
-    # === RUN AMBLE WALK ===
-    print("Starting AMBLE WALK...")
-    amble_walk(servos, stand_pose, loops=4)
-
-    # Quay về ngồi
-    move_pose(servos, stand_pose, sit_pose)
-    sleep(0.2)
+    # Dừng ở pose cuối
+    sleep(0.5)
 
 
 if __name__ == "__main__":
