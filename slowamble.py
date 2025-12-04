@@ -6,146 +6,117 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# =================== CONFIG ===================
+# ================== CẤU HÌNH CHUNG ==================
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# Nội suy mềm (sit → stand)
-STAND_STEPS = 35
-STAND_DELAY = 0.02
+MOVE_STEPS = 30      # nội suy giữa 2 pose
+STEP_DELAY = 0.02    # delay giữa các bước nội suy
+STEP_HOLD = 2.0      # GIỮ mỗi step 2 giây để test
 
-# Nội suy cho gait (mạnh, nhanh)
-WALK_STEPS = 18
-WALK_DELAY = 0.015
-
-CYCLES = 50   # số vòng lặp gait 8 bước
+CYCLES = 20          # số vòng lặp 4 step (bạn chỉnh tùy ý)
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
     try:
         x = int(round(float(x)))
-    except:
+    except Exception:
         x = 0
     return max(lo, min(hi, x))
 
 
-def lerp(a, b, t):
+def lerp(a, b, t: float):
     return a + (b - a) * t
 
 
-def load_pose(path: Path) -> dict:
-    data = json.loads(path.read_text())
+def load_pose_file(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Không thấy file pose: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
     out = {}
     for p in PORTS:
         out[p] = clamp(data.get(p, 0))
     return out
 
 
-def apply_pose(servos, pose):
+def apply_pose(servos: dict, pose: dict):
     for p in PORTS:
         servos[p].angle(clamp(pose[p]))
 
 
-def move_pose(servos, pose_from, pose_to, steps, delay):
+def move_pose(servos: dict, pose_from: dict, pose_to: dict,
+              steps=MOVE_STEPS, step_delay=STEP_DELAY):
+    """Nội suy mượt từ pose_from -> pose_to."""
     for s in range(1, steps + 1):
         t = s / steps
         for p in PORTS:
             v = clamp(lerp(pose_from[p], pose_to[p], t))
             servos[p].angle(v)
-        sleep(delay)
+        sleep(step_delay)
 
 
-# =================== 8 AMBLE STEPS ===================
-
+# ================== 4 STEP (TỪ HÌNH 1–4) ==================
+# Hình 1
 STEP1 = {
-  "P0": -27, "P1": 83, "P2": 43, "P3": -82,
-  "P4": 18,  "P5": 86, "P6": -10, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
+    "P0": -28, "P1": 82, "P2": 43, "P3": -80,
+    "P4": 88,  "P5": 2,  "P6": -77, "P7": 8,
+    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
+# Hình 2
 STEP2 = {
-  "P0": -27, "P1": 83, "P2": -8, "P3": -82,
-  "P4": 18,  "P5": 86, "P6": -10, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
+    "P0": 62, "P1": 64, "P2": 43, "P3": -80,
+    "P4": 88, "P5": 2,  "P6": -77, "P7": 8,
+    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
+# Hình 3
 STEP3 = {
-  "P0": -25, "P1": 83, "P2": -8, "P3": -82,
-  "P4": 18,  "P5": 86, "P6": 32, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
+    "P0": 62, "P1": -8, "P2": -45, "P3": -80,
+    "P4": 88, "P5": 2,  "P6": -77, "P7": 8,
+    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
+# Hình 4
 STEP4 = {
-  "P0": -25, "P1": 83, "P2": 62, "P3": -82,
-  "P4": 18,  "P5": 86, "P6": 32, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
+    "P0": 52, "P1": 15, "P2": -62, "P3": 11,
+    "P4": 48, "P5": 18, "P6": -51, "P7": 8,
+    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
-STEP5 = {
-  "P0": 33, "P1": 83, "P2": 62, "P3": -82,
-  "P4": 18, "P5": 86, "P6": 32, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
-}
-
-STEP6 = {
-  "P0": 34, "P1": 83, "P2": 50, "P3": -82,
-  "P4": -14, "P5": 86, "P6": 32, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
-}
-
-STEP7 = {
-  "P0": -15, "P1": 65, "P2": 48, "P3": -82,
-  "P4": -14, "P5": 86, "P6": 32, "P7": -77,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
-}
-
-STEP8 = {
-  "P0": -41, "P1": 65, "P2": 67, "P3": -82,
-  "P4": 55,  "P5": 81, "P6": -38, "P7": -79,
-  "P8": -29, "P9": 90, "P10": -90, "P11": 0
-}
-
-STEPS = [STEP1, STEP2, STEP3, STEP4, STEP5, STEP6, STEP7, STEP8]
+STEPS = [STEP1, STEP2, STEP3, STEP4]
 
 
-# =================== MAIN GAIT FUNCTION ===================
+def gait_4steps(servos: dict, base_pose: dict, cycles: int = CYCLES):
+    # 1) Load & apply pose từ config
+    apply_pose(servos, base_pose)
+    sleep(1.0)
 
-def gait_loop(servos, sit_pose):
-    """
-    1. setup bằng pose config
-    2. đứng lên theo step1
-    3. loop 8 bước mãi mãi
-    """
+    # 2) Từ config -> STEP1
+    move_pose(servos, base_pose, STEPS[0])
+    sleep(STEP_HOLD)
 
-    # --- 1) đưa về pose trong config ---
-    apply_pose(servos, sit_pose)
-    sleep(0.6)
-
-    # --- 2) từ config → đứng lên (step1) ---
-    move_pose(servos, sit_pose, STEPS[0],
-              steps=STAND_STEPS, delay=STAND_DELAY)
     current = STEPS[0]
-    sleep(0.1)
 
-    # --- 3) loop 8 bước (không quay lại config) ---
-    for _ in range(CYCLES):
+    # 3) Loop 4 bước
+    for _ in range(cycles):
         for i in range(len(STEPS)):
-            nxt = STEPS[(i + 1) % len(STEPS)]
-            move_pose(servos, current, nxt,
-                      steps=WALK_STEPS, delay=WALK_DELAY)
+            nxt = STEPS[(i + 1) % len(STEPS)]  # 1→2→3→4→1→…
+            move_pose(servos, current, nxt)
+            sleep(STEP_HOLD)
             current = nxt
 
 
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    sit_pose = load_pose(POSE_FILE)
-    gait_loop(servos, sit_pose)
+    base_pose = load_pose_file(POSE_FILE)
+    gait_4steps(servos, base_pose, cycles=CYCLES)
 
-    # kết thúc: giữ nguyên không trả về sit trừ khi bạn muốn
-    # apply_pose(servos, sit_pose)
+    # nếu muốn kết thúc quay lại pose config thì bỏ comment dòng dưới
+    # apply_pose(servos, base_pose)
 
 
 if __name__ == "__main__":
