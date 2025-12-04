@@ -21,20 +21,20 @@ STEP_DELAY = 0.02
 
 LEG_DELTA = 70  # đổi góc 70 độ
 
-# Motor được phép di chuyển: 1,3,5,7  => P0,P2,P4,P6
-MOVE_LEG_INDEXES = [0, 2, 4, 6]
+# Motor được phép di chuyển tạm thời: chỉ motor 5 và 7  => P4, P6
+MOVE_LEG_INDEXES = [4, 6]
 
 # Hướng từng chân P0..P7: +1 bình thường, -1 đảo chiều
 # Motor 3 và 7 ngược => P2 và P6 = -1
 LEG_DIR = [
-    1,   # P0 (motor 1)  move
-    1,   # P1 (motor 2)  locked
-   -1,   # P2 (motor 3)  move (reversed)
-    1,   # P3 (motor 4)  locked
-    1,   # P4 (motor 5)  move
-    1,   # P5 (motor 6)  locked
-   -1,   # P6 (motor 7)  move (reversed)
-    1    # P7 (motor 8)  locked
+    1,   # P0 (motor 1)
+    1,   # P1 (motor 2)
+   -1,   # P2 (motor 3)  (reversed)
+    1,   # P3 (motor 4)
+    1,   # P4 (motor 5)
+    1,   # P5 (motor 6)
+   -1,   # P6 (motor 7)  (reversed)
+    1    # P7 (motor 8)
 ]
 
 # ===== Head using channel 10 (P10) =====
@@ -72,7 +72,7 @@ def load_pose_file(path: Path) -> dict:
 
 def make_stand_selective(sit: dict) -> dict:
     """
-    Chỉ move P0,P2,P4,P6; các chân khác giữ nguyên.
+    Chỉ move P4 và P6 (motor 5 và 7); các chân khác giữ nguyên.
     Hướng từng chân lấy từ LEG_DIR.
     """
     stand = dict(sit)
@@ -130,7 +130,7 @@ def main():
     stand_pose = make_stand_selective(sit_pose)
 
     print("Loaded SIT pose from:", POSE_FILE)
-    print("Move motors: 1,3,5,7 => ports:", [f"P{i}" for i in MOVE_LEG_INDEXES])
+    print("Move motors: 5,7 => ports:", [f"P{i}" for i in MOVE_LEG_INDEXES])
     print("Reversed motors: 3,7 => ports: P2, P6")
     print("LEG_DELTA:", LEG_DELTA)
     print("SIT legs  (P0..P7):", legs_list(sit_pose))
@@ -138,19 +138,19 @@ def main():
     print("HEAD baseline", HEAD_PORT, "=", sit_pose[HEAD_PORT], "| swing ±", HEAD_SWING)
     print()
 
-    # Đưa tất cả servo về pose trong file config
+    # Đưa tất cả servo về pose trong file config (tư thế ngồi mới)
     apply_pose(servos, sit_pose)
     sleep(RESET_HOLD_SEC)
 
     # ==== BƯỚC 2: ĐỨNG LÊN / NGỒI XUỐNG / LẮC ĐẦU NHẸ ====
     for _ in range(REPS):
-        # từ ngồi -> đứng
+        # từ ngồi -> đứng (chỉ P4, P6 khác nên chỉ 2 chân sau chạy)
         move_pose(servos, sit_pose, stand_pose)
         sleep(0.2)
         head_swing(servos, stand_pose)   # lắc đầu khi đang đứng
         sleep(STAND_HOLD_SEC)
 
-        # từ đứng -> ngồi
+        # từ đứng -> ngồi lại
         move_pose(servos, stand_pose, sit_pose)
         sleep(0.2)
         head_swing(servos, sit_pose)     # lắc đầu khi đang ngồi
