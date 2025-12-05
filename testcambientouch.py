@@ -3,8 +3,8 @@ import time
 import RPi.GPIO as GPIO
 
 # Theo log lỗi trước đó: touch_L = GPIO27 (pin 13)
-PIN_L = 27      # BCM 27
-PIN_R = 22      # tạm đoán touch_R = 22, nếu không đổi thì mình sẽ thử chân khác
+PIN_L = 2      # BCM 27
+PIN_R = 3      # tạm đoán touch_R = 22, nếu không đổi thì mình sẽ thử chân khác
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(PIN_L, GPIO.IN, pull_up_down=GPIO.PUD_UP)
