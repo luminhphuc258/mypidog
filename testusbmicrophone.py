@@ -16,10 +16,10 @@ RAW_WAV = Path("usb_raw.wav")
 BOOSTED_WAV = Path("usb_boosted.wav")
 
 # ==== BOOST CONFIG ====
-REC_SECONDS = 4
-TARGET_PEAK_DB = -3.0
-EXTRA_GAIN_DB = 12.0      # tăng gấp đôi so với lúc nãy
-MAX_TOTAL_GAIN_DB = 45.0  # cho lớn hơn nữa
+REC_SECONDS = 8
+TARGET_PEAK_DB = -6.0      # normalize thấp hơn một chút
+EXTRA_GAIN_DB  = 6.0       # thêm +6 dB thôi
+MAX_TOTAL_GAIN_DB = 35.0 
 
 
 def record_usb_mic():
