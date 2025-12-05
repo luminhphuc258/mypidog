@@ -1,34 +1,27 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import time
-from pidog import Pidog
-from pidog.dual_touch import TouchStyle
+import RPi.GPIO as GPIO
 
-def main():
-    print("=== TEST TOUCH SENSOR với Pidog() ===")
-    print("Lưu ý: khi chạy script này, servo sẽ bị reset về pose mặc định của Pidog.")
-    print("Chạm vào 2 cảm biến trên đầu xem giá trị thay đổi.\n")
+# Theo log lỗi trước đó: touch_L = GPIO27 (pin 13)
+PIN_L = 27      # BCM 27
+PIN_R = 22      # tạm đoán touch_R = 22, nếu không đổi thì mình sẽ thử chân khác
 
-    dog = Pidog()     # sẽ reset servo 1 lần
-    touch = dog.dual_touch
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(PIN_L, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(PIN_R, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-    try:
-        while True:
-            val = touch.read()   # số nguyên
-            try:
-                name = TouchStyle(val).name
-            except Exception:
-                name = f"UNKNOWN({val})"
-            print(f"[TOUCH] raw={val}   name={name}")
-            time.sleep(0.05)
-    except KeyboardInterrupt:
-        print("\n[EXIT] Dừng test touch.")
-    finally:
-        try:
-            dog.close()
-        except Exception:
-            pass
+print("=== RAW GPIO TOUCH TEST ===")
+print("Chạm lần lượt vào 2 cảm biến trên đầu.")
+print("Nhấn Ctrl+C để dừng.\n")
 
-if __name__ == "__main__":
-    main()
+try:
+    while True:
+        vL = GPIO.input(PIN_L)
+        vR = GPIO.input(PIN_R)
+        # v = 1 nghĩa là không chạm (do PULL_UP), 0 là đang chạm (đa số cảm biến active-LOW)
+        print(f"L={vL}   R={vR}", end="\r", flush=True)
+        time.sleep(0.05)
+except KeyboardInterrupt:
+    print("\n[EXIT] Stop raw GPIO test.")
+finally:
+    GPIO.cleanup()
