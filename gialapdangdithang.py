@@ -33,6 +33,21 @@ HEAD_PITCH_STEP = 1      # mỗi bước đổi 1 độ
 # Lắc “thỉnh thoảng” – ít lắc
 HEAD_SHAKE_INTERVAL = 220   # sau ~220 frame mới bắt đầu 1 chu kỳ lắc
 HEAD_SHAKE_WINDOW  = 25     # mỗi lần chỉ lắc trong 25 frame
+# Pose đứng thẳng sau mỗi loop
+STAND_POSE = {
+    "P0": -3,
+    "P1": 89,
+    "P2": 9,
+    "P3": -80,
+    "P4": 11,
+    "P5": 90,
+    "P6": 10,
+    "P7": -90,
+    "P8": -53,
+    "P9": 90,
+    "P10": -90,
+    "P11": 0,
+}
 
 # Thời gian chuyển từ gait -> đứng thẳng và ngược lại
 STAND_TRANSITION_SEC = 1.0  # ~1 giây
@@ -139,7 +154,11 @@ def main():
 
     # 1) Đưa robot về pose chuẩn từ file 1 lần lúc khởi động
     base = load_base_pose()
-    base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
+base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
+
+# dùng pose đứng chuẩn cố định cho sau mỗi loop
+stand_legs = {f"P{i}": STAND_POSE[f"P{i}"] for i in range(8)}
+
 
     # head pitch ban đầu để lắc
     head_pitch = HEAD_PITCH_MIN
@@ -187,24 +206,24 @@ def main():
 
             # Nếu tới frame cuối -> chuyển về đứng thẳng, giữ 1 chút, rồi lại vào frame 0
             if current_index == len(gait_frames) - 1:
-                # 1) gait_last -> đứng thẳng
+                # 1) gait_last -> đứng thẳng (theo STAND_POSE)
                 smooth_legs_transition(
                     servos,
                     {f"P{i}": pose[f"P{i}"] for i in range(8)},
-                    base_legs,
-                    head_pitch=HEAD_PITCH_MIN,         # đứng thẳng, không lắc
+                    stand_legs,
+                    head_pitch=HEAD_PITCH_MIN,
                     duration_sec=STAND_TRANSITION_SEC
                 )
 
-                # 2) giữ đứng yên cho motor ổn định
-                apply_pose(servos, base, HEAD_PITCH_MIN)
+                # 2) giữ đứng yên cho motor ổn định (dùng STAND_POSE)
+                apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
                 sleep(STAND_HOLD_SEC)
 
                 # 3) đứng -> frame đầu tiên
                 first = gait_frames[0]
                 smooth_legs_transition(
                     servos,
-                    base_legs,
+                    stand_legs,
                     {f"P{i}": first[f"P{i}"] for i in range(8)},
                     head_pitch=HEAD_PITCH_MIN,
                     duration_sec=STAND_TRANSITION_SEC
