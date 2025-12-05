@@ -28,44 +28,44 @@ except ImportError:
         Ultrasonic = None  # nếu không có thì bỏ qua test khoảng cách
 
 # ========= CONFIG =========
+# ========= CONFIG =========
 
 AUDIO_DIR = Path.cwd() / "audio_test"
 AUDIO_DIR.mkdir(exist_ok=True)
 
-MIC_RECORD_SECONDS = 4        # ghi 4 giây
-MIC_GAP_SECONDS = 1.0         # nghỉ 1 giây rồi ghi tiếp
+MIC_RECORD_SECONDS = 4
+MIC_GAP_SECONDS = 1.0
 
-DIST_THRESHOLD_CM = 15        # khoảng cách để "sủa"
-SENSOR_POLL_SEC = 0.05        # chu kỳ đọc cảm biến
+DIST_THRESHOLD_CM = 15
+SENSOR_POLL_SEC = 0.05
 
-# 👉 Device ALSA ĐÃ TEST OK
-ALSA_DEVICE = "plughw:3,0"
+# 👇 ĐÃ TEST: loa phát tốt ở đây
+PLAY_DEVICE = "plughw:3,0"
 
-# File âm thanh giả tiếng sủa (bạn có thể đổi sang file riêng)
+# 👇 Dùng device khác cho MIC (thường là default)
+CAPTURE_DEVICE = "default"   # hoặc "" để không dùng -D, cho ALSA tự chọn
+
 BARK_WAV = "/usr/share/sounds/alsa/Front_Center.wav"
+
 
 # ==========================
 
-
 def record_and_play(index: int) -> None:
-    """
-    Ghi 1 đoạn audio từ micro của PiDog bằng `arecord`,
-    sau đó phát lại bằng `aplay`, dùng ALSA_DEVICE.
-    Ghi ở 16kHz mono.
-    """
     out_file = AUDIO_DIR / f"segment_{index:03d}.wav"
     print(f"[MIC] 🎤 Ghi âm {MIC_RECORD_SECONDS}s -> {out_file}")
 
+    # ---- GHI ÂM (MIC) ----
     rec_cmd = [
         "arecord",
-        "-D", ALSA_DEVICE,
         "-f", "S16_LE",
-        "-r", "16000",          # 16 kHz
-        "-c", "1",              # mono
+        "-r", "16000",
+        "-c", "1",
         "-d", str(MIC_RECORD_SECONDS),
         "-q",
         str(out_file),
     ]
+    if CAPTURE_DEVICE:  # chỉ thêm -D nếu mình set
+        rec_cmd[1:1] = ["-D", CAPTURE_DEVICE]
 
     try:
         subprocess.run(rec_cmd, check=False)
@@ -74,10 +74,11 @@ def record_and_play(index: int) -> None:
         print("[MIC] ❌ Không tìm thấy `arecord`. Cài: sudo apt install alsa-utils")
         return
 
+    # ---- PHÁT LẠI (LOA) ----
     print(f"[MIC] 🔊 Phát lại: {out_file}")
     play_cmd = [
         "aplay",
-        "-D", ALSA_DEVICE,
+        "-D", PLAY_DEVICE,
         "-q",
         str(out_file),
     ]
@@ -89,11 +90,10 @@ def record_and_play(index: int) -> None:
 
 
 def play_bark():
-    """Phát tiếng 'gâu gâu' qua loa."""
     print("[BARK] 🔊 Gâu gâu!")
     cmd = [
         "aplay",
-        "-D", ALSA_DEVICE,
+        "-D", PLAY_DEVICE,
         "-q",
         BARK_WAV,
     ]
