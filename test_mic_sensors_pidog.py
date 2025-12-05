@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Demo test cho PiDog:
+Demo test cho PiDog (KHÔNG DÙNG Pidog()):
 - Micro: ghi âm 4s từ micro, sau đó phát lại qua loa (loop liên tục).
-- Cảm biến khoảng cách: nếu đến gần (< DIST_THRESHOLD_CM) thì robot bark.
+- Cảm biến khoảng cách: nếu đến gần (< DIST_THRESHOLD_CM) thì phát tiếng "gâu gâu" qua loa.
 - Cảm biến touch trên đầu: chạm vào -> LED breath màu cyan.
 
 Nhấn Ctrl+C để dừng.
@@ -15,8 +15,22 @@ import threading
 import subprocess
 from pathlib import Path
 
-from pidog.pidog import Pidog
-from pidog.dual_touch import TouchStyle
+# KHÔNG import Pidog
+# from pidog.pidog import Pidog
+
+# Dùng module con, không đụng tới servo
+from pidog.rgb_strip import RGBStrip
+from pidog.dual_touch import DualTouch, TouchStyle
+
+# ultrasonic thường có riêng module, thử import
+try:
+    from pidog.ultrasonic import Ultrasonic
+except ImportError:
+    # fallback: dùng ultrasonic trong robot_hat nếu có
+    try:
+        from robot_hat import Ultrasonic
+    except ImportError:
+        Ultrasonic = None  # nếu không có, ta sẽ báo lỗi khi chạy
 
 # ========= CONFIG =========
 
@@ -26,8 +40,11 @@ AUDIO_DIR.mkdir(exist_ok=True)
 MIC_RECORD_SECONDS = 4        # ghi 4 giây
 MIC_GAP_SECONDS = 1.0         # nghỉ 1 giây rồi ghi tiếp
 
-DIST_THRESHOLD_CM = 15        # khoảng cách để bark
+DIST_THRESHOLD_CM = 15        # khoảng cách để "sủa"
 SENSOR_POLL_SEC = 0.05        # chu kỳ đọc cảm biến
+
+# File âm thanh tiếng sủa (bạn có thể đổi sang file riêng của bạn)
+BARK_WAV = "/usr/share/sounds/alsa/Front_Center.wav"  # tạm dùng file test có sẵn
 
 # ==========================
 
@@ -40,7 +57,6 @@ def record_and_play(index: int) -> None:
     out_file = AUDIO_DIR / f"segment_{index:03d}.wav"
     print(f"[MIC] 🎤 Ghi âm {MIC_RECORD_SECONDS}s -> {out_file}")
 
-    # Ghi âm
     rec_cmd = [
         "arecord",
         "-f", "cd",                 # 16-bit, 44.1kHz, stereo
@@ -70,10 +86,42 @@ def record_and_play(index: int) -> None:
         print("[MIC] ❌ Không tìm thấy `aplay`. Cài: sudo apt install alsa-utils")
 
 
-def sensor_loop(dog: Pidog, stop_flag):
+def play_bark():
+    """
+    Phát tiếng "gâu gâu" qua loa.
+    Bạn có thể đổi BARK_WAV thành file tiếng chó riêng.
+    """
+    print("[BARK] 🔊 Gâu gâu!")
+    cmd = ["aplay", "-q", BARK_WAV]
+    try:
+        subprocess.run(cmd, check=False)
+    except FileNotFoundError:
+        print("[BARK] ❌ Không tìm thấy `aplay` hoặc file wav.")
+
+
+def read_distance_cm(ultra):
+    """
+    Đọc khoảng cách từ ultrasonic.
+    Thử cả 2 kiểu API: .read() và .read_distance().
+    """
+    if ultra is None:
+        return None
+
+    dist = None
+    try:
+        dist = ultra.read()
+    except Exception:
+        try:
+            dist = ultra.read_distance()
+        except Exception:
+            dist = None
+    return dist
+
+
+def sensor_loop(ultra, dual_touch: DualTouch, strip: RGBStrip, stop_flag):
     """
     Luồng đọc cảm biến:
-    - ultrasonic: nếu khoảng cách < DIST_THRESHOLD_CM -> bark
+    - ultrasonic: nếu khoảng cách < DIST_THRESHOLD_CM -> phát tiếng "bark"
     - touch: chạm đầu -> LED breath cyan
     """
     last_touch = None
@@ -83,28 +131,22 @@ def sensor_loop(dog: Pidog, stop_flag):
 
     while not stop_flag["stop"]:
         # ---- ULTRASONIC ----
-        try:
-            dist = dog.read_distance()
-        except Exception as e:
-            print("[SENSOR] Lỗi đọc khoảng cách:", e)
-            dist = None
-
-        if dist is not None and 1 < dist < DIST_THRESHOLD_CM:
+        dist = read_distance_cm(ultra)
+        if dist is not None and isinstance(dist, (int, float)) and 1 < dist < DIST_THRESHOLD_CM:
             now = time.time()
             if now - last_bark_time > 1.0:  # tránh bark liên tục
-                print(f"[SENSOR] 🧱 Vật ở gần: {dist:.1f} cm -> bark")
-                try:
-                    dog.do_action("bark", speed=80)
-                except Exception as e:
-                    print("[SENSOR] Lỗi dog.do_action('bark'):", e)
+                print(f"[SENSOR] 🧱 Vật ở gần: {dist:.1f} cm -> bark (audio)")
+                play_bark()
                 last_bark_time = now
 
         # ---- TOUCH ----
-        try:
-            touch_val = dog.dual_touch.read()
-        except Exception as e:
-            print("[SENSOR] Lỗi đọc touch sensor:", e)
-            touch_val = None
+        touch_val = None
+        if dual_touch is not None:
+            try:
+                touch_val = dual_touch.read()
+            except Exception as e:
+                print("[SENSOR] Lỗi đọc touch sensor:", e)
+                touch_val = None
 
         if touch_val is not None and touch_val != last_touch and touch_val != 0:
             try:
@@ -115,7 +157,8 @@ def sensor_loop(dog: Pidog, stop_flag):
 
             # chạm -> bật LED breath cyan
             try:
-                dog.rgb_strip.set_mode("breath", "cyan", 1)
+                strip.set_mode("breath", "cyan", 1)
+                strip.show()
             except Exception as e:
                 print("[SENSOR] Lỗi set_mode rgb_strip:", e)
 
@@ -152,36 +195,67 @@ def mic_test_loop(stop_flag):
 
 
 def main():
-    print("[MAIN] Khởi tạo PiDog...")
-    dog = Pidog()
-    time.sleep(1)
+    print("[MAIN] Khởi tạo phần cứng (KHÔNG dùng Pidog)...")
 
-    # Đưa robot về tư thế SIT + bật LED vàng nhẹ để biết demo đang chạy
+    # LED strip
     try:
-        dog.do_action("sit", speed=60)
-    except Exception:
-        pass
+        strip = RGBStrip()
+        strip.set_mode("breath", "yellow", 1)
+        strip.show()
+    except Exception as e:
+        print("[MAIN] Lỗi khởi tạo RGBStrip:", e)
+        strip = None
 
+    # Ultrasonic
+    if Ultrasonic is None:
+        ultra = None
+        print("[MAIN] Không có lớp Ultrasonic, bỏ qua cảm biến khoảng cách.")
+    else:
+        try:
+            # Giả sử Ultrasonic() không cần tham số, nếu cần bạn chỉnh lại cho đúng pin
+            ultra = Ultrasonic()
+        except TypeError:
+            # Một số bản cần pin, bạn tự chỉnh lại ở đây cho đúng
+            # Ví dụ (GIẢ ĐỊNH): Ultrasonic(trigger_pin="D2", echo_pin="D3")
+            try:
+                ultra = Ultrasonic()
+            except Exception as e:
+                print("[MAIN] Lỗi khởi tạo Ultrasonic:", e)
+                ultra = None
+        except Exception as e:
+            print("[MAIN] Lỗi khởi tạo Ultrasonic:", e)
+            ultra = None
+
+    # Touch sensor
     try:
-        dog.rgb_strip.set_mode("breath", "yellow", 1)
-    except Exception:
-        pass
+        dual_touch = DualTouch()
+    except Exception as e:
+        print("[MAIN] Lỗi khởi tạo DualTouch:", e)
+        dual_touch = None
 
     stop_flag = {"stop": False}
 
-    # 1 thread đọc cảm biến
-    t_sensor = threading.Thread(target=sensor_loop, args=(dog, stop_flag), daemon=True)
-    # 1 thread test micro (ghi + phát)
-    t_mic = threading.Thread(target=mic_test_loop, args=(stop_flag,), daemon=True)
+    # Thread đọc cảm biến
+    t_sensor = threading.Thread(
+        target=sensor_loop,
+        args=(ultra, dual_touch, strip, stop_flag),
+        daemon=True,
+    )
+    # Thread test micro (ghi + phát)
+    t_mic = threading.Thread(
+        target=mic_test_loop,
+        args=(stop_flag,),
+        daemon=True,
+    )
 
     t_sensor.start()
     t_mic.start()
 
     print(
-        "\n[MAIN] Demo đang chạy:\n"
-        "  - Micro: ghi 4s rồi phát lại qua loa (lặp liên tục) vào thư mục ./audio_test\n"
-        f"  - Cảm biến khoảng cách: nếu < {DIST_THRESHOLD_CM} cm -> bark\n"
-        "  - Touch đầu: chạm -> LED breath cyan\n"
+        "\n[MAIN] Demo đang chạy (KHÔNG reset servo vì không tạo Pidog()):\n"
+        "  - Micro: ghi 4s rồi phát lại qua loa (loop) -> ./audio_test\n"
+        f"  - Cảm biến khoảng cách (nếu Ultrasonic khởi tạo OK): < {DIST_THRESHOLD_CM} cm -> phát bark.mp3\n"
+        "  - Touch đầu (nếu DualTouch khởi tạo OK): chạm -> LED breath cyan\n"
         "Nhấn Ctrl+C để dừng.\n"
     )
 
@@ -193,18 +267,16 @@ def main():
     finally:
         stop_flag["stop"] = True
         time.sleep(1.0)
-        # tắt LED + đóng dog
-        try:
-            dog.rgb_strip.set_mode("breath", [0, 0, 0], 1, brightness=0)
-            dog.rgb_strip.show()
-            dog.rgb_strip.close()
-        except Exception:
-            pass
-        try:
-            dog.close()
-        except Exception:
-            pass
-        print("[MAIN] Thoát demo.")
+
+        if strip is not None:
+            try:
+                strip.set_mode("breath", [0, 0, 0], 1, brightness=0)
+                strip.show()
+                strip.close()
+            except Exception:
+                pass
+
+        print("[MAIN] Thoát demo (servo KHÔNG bị reset vì không dùng Pidog()).")
 
 
 if __name__ == "__main__":
