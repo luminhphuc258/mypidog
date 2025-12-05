@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 
 # -*- coding: utf-8 -*-
 
 import json
 from time import sleep
 from pathlib import Path
 from robot_hat import Servo
-from pidog.rgb_strip import RGBStrip   # 💡 giống y như file LED riêng của bạn
+from pidog.rgb_strip import RGBStrip   # dùng RGBStrip trực tiếp
 
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
@@ -46,10 +46,14 @@ STAND_POSE = {
     "P11": 0,
 }
 
-STAND_TRANSITION_SEC = 0.7
+# chuyển tư thế cuối -> đứng cho nhanh hơn chút
+STAND_TRANSITION_SEC = 0.5
 STAND_HOLD_SEC       = 0.15
 
 NUM_LOOPS = 10
+
+# ✅ chỉ cập nhật LED mỗi 5 frame để đỡ chậm
+LED_UPDATE_EVERY = 5
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -136,7 +140,6 @@ def main():
     servos = {p: Servo(p) for p in PORTS}
 
     # ==== RGB LED STRIP ====
-    # giống như script riêng: tạo strip, set_mode, rồi cứ show() trong loop
     strip = RGBStrip()
     print("Turn LED BLUE (breath) while walking...")
     strip.set_mode(style="breath", color="blue", bps=1.2, brightness=0.8)
@@ -155,8 +158,7 @@ def main():
     gait_frames = load_gait_frames()
     if not gait_frames:
         print("No gait frames found!")
-        # tắt LED rồi thoát
-        strip.set_mode(style="solid", color=[0, 0, 0], bps=1, brightness=0)
+        strip.set_mode(style="breath", color=[0, 0, 0], bps=1, brightness=0)
         strip.show()
         strip.close()
         return
@@ -181,7 +183,7 @@ def main():
             for idx, pose in enumerate(gait_frames):
                 frame_counter += 1
 
-                # lắc đầu (có thể tắt nếu muốn smooth hơn)
+                # lắc đầu (nếu muốn mượt hơn nữa có thể comment cả block này)
                 if (frame_counter % HEAD_SHAKE_INTERVAL) < HEAD_SHAKE_WINDOW:
                     head_pitch += head_dir * HEAD_PITCH_STEP
                     if head_pitch >= HEAD_PITCH_MAX:
@@ -195,8 +197,9 @@ def main():
 
                 apply_pose(servos, pose, head_pitch)
 
-                # cập nhật hiệu ứng LED
-                strip.show()
+                # ✅ chỉ update LED mỗi vài frame để không làm chậm gait
+                if frame_counter % LED_UPDATE_EVERY == 0:
+                    strip.show()
 
                 sleep(FRAME_DELAY)
 
@@ -214,9 +217,8 @@ def main():
         apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
         sleep(STAND_HOLD_SEC)
 
-        # TẮT LED
         print("Turn LED OFF.")
-        strip.set_mode(style="solid", color=[0, 0, 0], bps=1, brightness=0)
+        strip.set_mode(style="breath", color=[0, 0, 0], bps=1, brightness=0)
         strip.show()
         strip.close()
 
@@ -228,7 +230,7 @@ def main():
         sleep(0.3)
 
         print("Turn LED OFF (Ctrl+C).")
-        strip.set_mode(style="solid", color=[0, 0, 0], bps=1, brightness=0)
+        strip.set_mode(style="breath", color=[0, 0, 0], bps=1, brightness=0)
         strip.show()
         strip.close()
 
