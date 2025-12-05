@@ -22,15 +22,14 @@ from pathlib import Path
 from pidog.rgb_strip import RGBStrip
 from pidog.dual_touch import DualTouch, TouchStyle
 
-# ultrasonic thường có riêng module, thử import
+# ultrasonic: thử import từ pidog, nếu không có thì fallback sang robot_hat
 try:
     from pidog.ultrasonic import Ultrasonic
 except ImportError:
-    # fallback: dùng ultrasonic trong robot_hat nếu có
     try:
         from robot_hat import Ultrasonic
     except ImportError:
-        Ultrasonic = None  # nếu không có, ta sẽ báo lỗi khi chạy
+        Ultrasonic = None  # không có ultrasonic, sẽ bỏ qua phần test khoảng cách
 
 # ========= CONFIG =========
 
@@ -43,8 +42,11 @@ MIC_GAP_SECONDS = 1.0         # nghỉ 1 giây rồi ghi tiếp
 DIST_THRESHOLD_CM = 15        # khoảng cách để "sủa"
 SENSOR_POLL_SEC = 0.05        # chu kỳ đọc cảm biến
 
-# File âm thanh tiếng sủa (bạn có thể đổi sang file riêng của bạn)
-BARK_WAV = "/usr/share/sounds/alsa/Front_Center.wav"  # tạm dùng file test có sẵn
+# Dùng device ALSA "default" (PiDog thường cấu hình sẵn về đúng sound card)
+ALSA_DEVICE = "default"
+
+# File âm thanh tiếng sủa (bạn có thể đổi sang file riêng)
+BARK_WAV = "/usr/share/sounds/alsa/Front_Center.wav"
 
 # ==========================
 
@@ -52,16 +54,20 @@ BARK_WAV = "/usr/share/sounds/alsa/Front_Center.wav"  # tạm dùng file test c�
 def record_and_play(index: int) -> None:
     """
     Ghi 1 đoạn audio từ micro của PiDog bằng `arecord`,
-    sau đó phát lại bằng `aplay`.
+    sau đó phát lại bằng `aplay`, dùng ALSA device "default".
+    Ghi ở 16kHz mono cho hợp với config của PiDog.
     """
     out_file = AUDIO_DIR / f"segment_{index:03d}.wav"
     print(f"[MIC] 🎤 Ghi âm {MIC_RECORD_SECONDS}s -> {out_file}")
 
     rec_cmd = [
         "arecord",
-        "-f", "cd",                 # 16-bit, 44.1kHz, stereo
+        "-D", ALSA_DEVICE,      # dùng ALSA default
+        "-f", "S16_LE",         # 16-bit
+        "-r", "16000",          # 16kHz
+        "-c", "1",              # mono
         "-d", str(MIC_RECORD_SECONDS),
-        "-q",                       # quiet
+        "-q",
         str(out_file),
     ]
 
@@ -76,7 +82,8 @@ def record_and_play(index: int) -> None:
     print(f"[MIC] 🔊 Phát lại: {out_file}")
     play_cmd = [
         "aplay",
-        "-q",               # quiet
+        "-D", ALSA_DEVICE,
+        "-q",
         str(out_file),
     ]
     try:
@@ -92,7 +99,12 @@ def play_bark():
     Bạn có thể đổi BARK_WAV thành file tiếng chó riêng.
     """
     print("[BARK] 🔊 Gâu gâu!")
-    cmd = ["aplay", "-q", BARK_WAV]
+    cmd = [
+        "aplay",
+        "-D", ALSA_DEVICE,
+        "-q",
+        BARK_WAV,
+    ]
     try:
         subprocess.run(cmd, check=False)
     except FileNotFoundError:
@@ -156,11 +168,12 @@ def sensor_loop(ultra, dual_touch: DualTouch, strip: RGBStrip, stop_flag):
             print(f"[SENSOR] 🤚 Touch detected: {style_name}")
 
             # chạm -> bật LED breath cyan
-            try:
-                strip.set_mode("breath", "cyan", 1)
-                strip.show()
-            except Exception as e:
-                print("[SENSOR] Lỗi set_mode rgb_strip:", e)
+            if strip is not None:
+                try:
+                    strip.set_mode("breath", "cyan", 1)
+                    strip.show()
+                except Exception as e:
+                    print("[SENSOR] Lỗi set_mode rgb_strip:", e)
 
         last_touch = touch_val
 
@@ -212,11 +225,9 @@ def main():
         print("[MAIN] Không có lớp Ultrasonic, bỏ qua cảm biến khoảng cách.")
     else:
         try:
-            # Giả sử Ultrasonic() không cần tham số, nếu cần bạn chỉnh lại cho đúng pin
             ultra = Ultrasonic()
         except TypeError:
-            # Một số bản cần pin, bạn tự chỉnh lại ở đây cho đúng
-            # Ví dụ (GIẢ ĐỊNH): Ultrasonic(trigger_pin="D2", echo_pin="D3")
+            # Nếu bản của bạn cần tham số pin thì chỉnh lại ở đây
             try:
                 ultra = Ultrasonic()
             except Exception as e:
@@ -254,8 +265,8 @@ def main():
     print(
         "\n[MAIN] Demo đang chạy (KHÔNG reset servo vì không tạo Pidog()):\n"
         "  - Micro: ghi 4s rồi phát lại qua loa (loop) -> ./audio_test\n"
-        f"  - Cảm biến khoảng cách (nếu Ultrasonic khởi tạo OK): < {DIST_THRESHOLD_CM} cm -> phát bark.mp3\n"
-        "  - Touch đầu (nếu DualTouch khởi tạo OK): chạm -> LED breath cyan\n"
+        f"  - Cảm biến khoảng cách (nếu Ultrasonic OK): < {DIST_THRESHOLD_CM} cm -> phát BARK_WAV\n"
+        "  - Touch đầu (nếu DualTouch OK): chạm -> LED breath cyan\n"
         "Nhấn Ctrl+C để dừng.\n"
     )
 
