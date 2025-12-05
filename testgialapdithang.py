@@ -13,7 +13,7 @@ PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
 # tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
-FRAME_DELAY = 0.005      # bạn đang dùng giá trị nào thấy ổn thì giữ
+FRAME_DELAY = 0.003      # bạn đang dùng giá trị nào thấy ổn thì giữ
 TRIM_TAIL_FRAMES = 350
 
 HEAD_TAIL_STATIC = {
