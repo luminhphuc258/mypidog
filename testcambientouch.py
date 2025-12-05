@@ -3,23 +3,23 @@
 
 """
 Test cảm biến touch trên đầu PiDog:
-- Chạm vào đầu -> loa PiDog phát tiếng sủa một lần.
+- mỗi lần giá trị touch thay đổi -> in ra và phát tiếng sủa.
 
-KHÔNG dùng Pidog(), chỉ dùng DualTouch + aplay.
+KHÔNG dùng Pidog(), chỉ DualTouch + aplay.
 """
 
 import time
 import subprocess
 from pathlib import Path
 
-# ---- ép gpiozero dùng RPiGPIO thay vì lgpio (tránh lỗi GPIO busy) ----
+# ---- ép gpiozero dùng RPiGPIO (tránh backend lgpio chiếm GPIO) ----
 from gpiozero import Device
 from gpiozero.pins.rpigpio import RPiGPIOFactory
 Device.pin_factory = RPiGPIOFactory()
 
 from pidog.dual_touch import DualTouch, TouchStyle
 
-# ========= CẤU HÌNH LOA & FILE BARK =========
+# ====== CẤU HÌNH LOA & FILE BARK ======
 
 SPEAKER_DEVICE = "plughw:3,0"   # loa PiDog (voiceHAT)
 
@@ -43,18 +43,22 @@ print(f"[INFO] Dùng file sủa: {BARK_WAV}")
 
 
 def play_bark():
-    """Phát tiếng sủa ra loa PiDog."""
-    cmd = ["aplay", "-D", SPEAKER_DEVICE, "-q", str(BARK_WAV)]
-    subprocess.run(cmd, check=False)
+    """Phát tiếng sủa ra loa PiDog & in log chi tiết."""
+    cmd = ["aplay", "-D", SPEAKER_DEVICE, str(BARK_WAV)]
+    print("[BARK] chạy lệnh:", " ".join(cmd))
+    try:
+        res = subprocess.run(cmd)
+        print("[BARK] aplay exit code:", res.returncode)
+    except Exception as e:
+        print("[BARK] Lỗi khi gọi aplay:", e)
 
 
 def main():
-    # tạo đối tượng đọc cảm biến touch
     touch = DualTouch()
 
-    last_val = 0
+    last_val = None
     last_bark_time = 0.0
-    DEBOUNCE_SEC = 0.8  # tránh sủa quá dày
+    DEBOUNCE_SEC = 0.5   # tránh spam quá nhanh
 
     print("\n=== TEST TOUCH + BARK ===")
     print("Chạm vào đầu PiDog để nghe tiếng sủa.")
@@ -62,21 +66,25 @@ def main():
 
     try:
         while True:
-            val = touch.read()   # 0 = không chạm, khác 0 = có chạm
+            val = touch.read()   # giá trị touch thô
 
-            if val != 0 and val != last_val:
+            if val != last_val:
                 now = time.time()
+                try:
+                    name = TouchStyle(val).name
+                except Exception:
+                    name = str(val)
+
+                print(f"[TOUCH] giá trị thay đổi: {name} ({val})")
+
                 if now - last_bark_time > DEBOUNCE_SEC:
-                    try:
-                        name = TouchStyle(val).name
-                    except Exception:
-                        name = str(val)
-                    print(f"[TOUCH] kiểu chạm: {name} ({val}) -> BARK!")
+                    print("[TOUCH] -> BARK!")
                     play_bark()
                     last_bark_time = now
 
-            last_val = val
-            time.sleep(0.03)
+                last_val = val
+
+            time.sleep(0.05)
 
     except KeyboardInterrupt:
         print("\n[EXIT] Dừng test touch + bark.")
