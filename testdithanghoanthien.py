@@ -197,7 +197,8 @@ def main():
                 sleep(FRAME_DELAY)
 
         # 👉 SAU KHI XONG TẤT CẢ CÁC LOOP MỚI ĐỨNG THẲNG
-        last_pose_legs = {f"P{i}": gait_frames[-1][f"P{i]"] for i in range(8)}
+       last_pose_legs = {f"P{i}": gait_frames[-1][f"P{i}"] for i in range(8)}
+
 
         smooth_legs_transition(
             servos,
