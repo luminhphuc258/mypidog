@@ -13,7 +13,7 @@ PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
 # tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
-FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
+FRAME_DELAY = 0.004      # muốn nhanh hơn có thể giảm 0.004–0.005
 
 # Bỏ bớt một số frame cuối (đoạn ngồi xuống)
 TRIM_TAIL_FRAMES = 350   # bỏ 350 frame cuối
@@ -51,8 +51,8 @@ STAND_POSE = {
 }
 
 # Thời gian chuyển từ gait -> đứng thẳng và ngược lại
-STAND_TRANSITION_SEC = 1.0  # ~1 giây
-STAND_HOLD_SEC       = 0.2  # đứng yên một chút cho ổn định
+STAND_TRANSITION_SEC = 0.7  # ~1 giây
+STAND_HOLD_SEC       = 0.15  # đứng yên một chút cho ổn định
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -135,7 +135,15 @@ def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec)
     Nội suy mượt P0..P7 từ pose_from -> pose_to trong duration_sec.
     P8,P9,P11 giữ nguyên giá trị chuẩn; P10 = head_pitch cố định.
     """
-    steps = max(1, int(duration_sec / FRAME_DELAY))
+    # THAY ĐOẠN NÀY:
+    # steps = max(1, int(duration_sec / FRAME_DELAY))
+
+    # BẰNG ĐOẠN NÀY: cố định khoảng 30–40 bước cho nhanh, dứt khoát
+    STEPS_MIN = 15
+    STEPS_MAX = 40
+    steps = int(duration_sec / 0.02)   # mỗi bước ~0.02 giây
+    steps = max(STEPS_MIN, min(STEPS_MAX, steps))
+
     for s in range(steps + 1):
         t = s / steps
         interp = {}
@@ -147,7 +155,10 @@ def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec)
         # place holder cho P8..P11
         interp.update({"P8": 0, "P9": 0, "P10": 0, "P11": 0})
         apply_pose(servos, interp, head_pitch)
+
+        # dùng thời gian đều cho mỗi bước
         sleep(duration_sec / steps)
+
 
 
 def main():
