@@ -10,9 +10,8 @@ POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# tăng tốc: ít bước nội suy hơn, delay nhỏ hơn
-MOVE_STEPS = 18
-STEP_DELAY = 0.008
+STEP_DELAY = 0.01
+MOVE_STEPS = 25
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -40,63 +39,62 @@ def move_pose(servos, pose_from: dict, pose_to: dict):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # --- Load pose đứng chuẩn từ file (để sync servo) ---
+    # --- load pose đứng chuẩn từ file (để sync servo) ---
     base = json.loads(POSE_FILE.read_text())
     for k in base:
         base[k] = clamp(base[k])
 
-    print("Loaded base pose from config:", base)
+    print("Loaded base pose:", base)
     apply_pose(servos, base)
     sleep(0.3)
 
-    # ============ 4 STEP MỚI ============
+    # ========= 4 STEP MỚI (theo ảnh bạn chụp) =========
 
-    # Step 1 – đứng 4 chân thẳng
+    # Step 1 – đứng thẳng 4 chân
     STEP1 = {
         "P0": -3,   "P1": 89,  "P2": 9,
         "P3": -80,  "P4": 3,   "P5": 90,
-        "P6": 10,   "P7": -90, "P8": -53,   # head yaw chỉnh -53
+        "P6": 10,   "P7": -90, "P8": -53,
         "P9": 90,   "P10": -90, "P11": 0,
     }
 
-    # Step 2 – chân trước phải bước lên, P3/P5/P6 mạnh hơn
+    # Step 2 – chân trước phải bước lên, tăng lực P3, P5, P6
     STEP2 = {
         "P0": -3,   "P1": 89,  "P2": 30,   # FR lên
-        "P3": -71,  "P4": 0,   "P5": 89,   # lực bên trái sau
+        "P3": -71,  "P4": 0,   "P5": 89,   # tăng lực chân sau trái (P3, P5)
         "P6": 14,   "P7": -90,
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
 
-    # Step 3 – cân lại, hai bên làm việc, P4/P6 đã chỉnh mới
+    # Step 3 – chân sau phải lùi về sau
     STEP3 = {
-        "P0": -4,   "P1": 89,  "P2": -15,
-        "P3": -80,  "P4": 12,  "P5": 90,
-        "P6": -32,  "P7": -77,
+        "P0": -3,   "P1": 89,  "P2": 30,
+        "P3": -80,  "P4": 3,   "P5": 90,
+        "P6": -23,  "P7": -90,  # RR đẩy mạnh ra sau
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
 
-    # Step 4 – chân trái trước & sau bước, P4 mạnh hơn (lùi nhiều)
+    # Step 4 – chân trái trước & sau bước, P4 & P5 mạnh hơn
     STEP4 = {
         "P0": -41,  "P1": 89,  "P2": 30,
-        "P3": -56,  "P4": -19, "P5": 90,
+        "P3": -56,  "P4": -19, "P5": 90,   # RL xoay mạnh hơn (P4,P5)
         "P6": -23,  "P7": -90,
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
 
     STEPS = [STEP1, STEP2, STEP3, STEP4]
 
-    # về STEP1 trước cho khớp dáng đứng
+    # Về STEP1 trước cho đúng dáng
     move_pose(servos, base, STEP1)
     current = STEP1
 
-    print("Start 4-step fast amble…")
+    print("Start new 4-step amble…")
 
     while True:
         for nxt in STEPS[1:] + [STEP1]:
             move_pose(servos, current, nxt)
             current = nxt
-            # nghỉ rất nhỏ giữa các bước để không bị giật
-            sleep(0.003)
+            sleep(0.005)
 
 
 if __name__ == "__main__":
