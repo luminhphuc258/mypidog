@@ -16,7 +16,7 @@ CLAMP_LO, CLAMP_HI = -90, 90
 FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
 
 # Bỏ bớt một số frame cuối (đoạn ngồi xuống)
-TRIM_TAIL_FRAMES = 350   # giờ bỏ 300 frame cuối
+TRIM_TAIL_FRAMES = 50   # giờ bỏ 300 frame cuối
 
 # Góc CHUẨN cho head yaw & tail (P8, P9, P11)
 HEAD_TAIL_STATIC = {
