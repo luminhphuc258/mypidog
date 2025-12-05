@@ -16,7 +16,7 @@ CLAMP_LO, CLAMP_HI = -90, 90
 FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
 
 # Bỏ bớt một số frame cuối (đoạn ngồi xuống)
-TRIM_TAIL_FRAMES = 120   # thử bỏ 120 frame cuối, nếu vẫn thấy ngồi thì tăng số này
+TRIM_TAIL_FRAMES = 300   # giờ bỏ 300 frame cuối
 
 # Góc CHUẨN cho head yaw & tail (P8, P9, P11)
 HEAD_TAIL_STATIC = {
@@ -28,7 +28,11 @@ HEAD_TAIL_STATIC = {
 # Lắc đầu trên P10 (head pitch)
 HEAD_PITCH_MIN = -90
 HEAD_PITCH_MAX = -70
-HEAD_PITCH_STEP = 1      # mỗi frame đổi 1 độ, muốn lắc nhanh hơn thì tăng lên 2
+HEAD_PITCH_STEP = 1      # mỗi bước đổi 1 độ
+
+# Lắc “thỉnh thoảng” – ít lắc hơn
+HEAD_SHAKE_INTERVAL = 220   # sau ~220 frame mới bắt đầu 1 chu kỳ lắc
+HEAD_SHAKE_WINDOW  = 25     # mỗi lần chỉ lắc trong 25 frame
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -44,7 +48,7 @@ def apply_pose(servos, pose: dict, head_pitch: int):
     Gửi góc cho tất cả servo.
     - P0..P7 lấy từ pose (gait frame)
     - P8, P9, P11 dùng góc chuẩn
-    - P10 dùng head_pitch đang lắc
+    - P10 dùng head_pitch (có thể đang lắc hoặc giữ nguyên)
     """
     send = dict(pose)
 
@@ -52,7 +56,7 @@ def apply_pose(servos, pose: dict, head_pitch: int):
     for k, v in HEAD_TAIL_STATIC.items():
         send[k] = v
 
-    # head pitch đang lắc
+    # head pitch
     send["P10"] = head_pitch
 
     for p in PORTS:
@@ -80,7 +84,7 @@ def load_gait_frames():
     frames = []
     for fr in frames_raw:
         pose = {}
-        # chỉ cần chắc chắn có đủ P0..P7, P8..P11 sẽ override khi apply
+        # chắc chắn có đủ P0..P7, P8..P11 sẽ override khi apply
         for i in range(8):
             p = f"P{i}"
             pose[p] = clamp(fr.get(p, 0))
@@ -126,19 +130,27 @@ def main():
     apply_pose(servos, first, head_pitch)
     sleep(FRAME_DELAY)
     current_index = 0
+    frame_counter = 0
 
-    print("Start continuous forward gait with head nod… (Ctrl+C để dừng)")
+    print("Start continuous forward gait with occasional head nod… (Ctrl+C để dừng)")
 
     try:
         while True:
-            # update head pitch lắc trong khoảng [-90, -70]
-            head_pitch += head_dir * HEAD_PITCH_STEP
-            if head_pitch >= HEAD_PITCH_MAX:
-                head_pitch = HEAD_PITCH_MAX
-                head_dir = -1
-            elif head_pitch <= HEAD_PITCH_MIN:
+            frame_counter += 1
+
+            # --- LẮC ĐẦU THỈNH THOẢNG ---
+            # chỉ lắc trong HEAD_SHAKE_WINDOW frame mỗi chu kỳ HEAD_SHAKE_INTERVAL
+            if (frame_counter % HEAD_SHAKE_INTERVAL) < HEAD_SHAKE_WINDOW:
+                head_pitch += head_dir * HEAD_PITCH_STEP
+                if head_pitch >= HEAD_PITCH_MAX:
+                    head_pitch = HEAD_PITCH_MAX
+                    head_dir = -1
+                elif head_pitch <= HEAD_PITCH_MIN:
+                    head_pitch = HEAD_PITCH_MIN
+                    head_dir = +1
+            else:
+                # phần lớn thời gian giữ ở -90 (không lắc)
                 head_pitch = HEAD_PITCH_MIN
-                head_dir = +1
 
             # chuyển frame tiếp theo
             current_index = (current_index + 1) % len(gait_frames)
