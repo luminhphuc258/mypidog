@@ -44,39 +44,33 @@ def main():
     for k in base:
         base[k] = clamp(base[k])
 
-    # Base bạn đang dùng (để dễ nhìn):
-    # P0=-3, P1=89, P2=9, P3=-80,
-    # P4=3, P5=90, P6=10, P7=-90 ...
-
     print("Loaded base pose from config:", base)
     apply_pose(servos, base)
     sleep(0.5)
 
-    # ----- STEP 1: đứng (gần = base, chỉ chỉnh nhẹ trái) -----
+    # ----- STEP 1: đứng (chỉnh FL mạnh hơn chút) -----
     step1 = dict(base)
-    # chỉnh nhẹ FL & RL cho cân (rất nhỏ, không ảnh hưởng hướng)
-    step1["P0"] = base["P0"] - 2   # hơi đưa FL về phía trước
-    step1["P4"] = base["P4"] + 2   # hơi đưa RL về phía sau
+    # trước: base["P0"] - 2  -> giờ cho mạnh hơn
+    step1["P0"] = base["P0"] - 6    # FL tiến nhiều hơn
+    step1["P4"] = base["P4"] + 2    # RL hơi lui
 
-    # ----- STEP 2: FR bước lên, trái chỉnh nhẹ -----
+    # ----- STEP 2: FR bước lên, FL tiến mạnh hơn -----
     step2 = dict(step1)
-    step2["P2"] = 30               # FR lên trước (như hình bạn chụp)
-    # cân bên trái chút xíu để đỡ lệch
-    step2["P0"] = step1["P0"] - 3  # FL hơi tiến thêm
-    step2["P4"] = step1["P4"] + 3  # RL hơi lui thêm
+    step2["P2"] = 30                # FR lên trước như cũ
+    # trước: step1["P0"] - 3  -> giờ cho mạnh thêm để kéo sang phải
+    step2["P0"] = step1["P0"] - 6   # FL tiến thêm nữa
+    step2["P4"] = step1["P4"] + 3   # RL lui nhẹ
 
-    # ----- STEP 3: RR đẩy ra sau, trái cũng đẩy NHẸ -----
+    # ----- STEP 3: RR đẩy ra sau, RL đẩy nhẹ -----
     step3 = dict(step1)
-    step3["P6"] = -23              # RR đẩy sau (như bạn chụp)
-    # RL đẩy rất nhẹ cùng hướng nhưng biên độ nhỏ hơn
-    step3["P4"] = step1["P4"] + 5
+    step3["P6"] = -23               # RR đẩy sau
+    step3["P4"] = step1["P4"] + 5   # RL hỗ trợ nhẹ
 
     seq = [step1, step2, step3]
 
     print("Starting balanced amble walk...")
 
     current = step1
-    # mượt về step1 từ base
     move_pose(servos, base, step1)
 
     while True:
