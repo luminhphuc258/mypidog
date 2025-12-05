@@ -2,24 +2,20 @@
 # -*- coding: utf-8 -*-
 
 import json
-import time
+from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# ====== FILE & CẤU HÌNH ======
-POSE_FILE = Path.cwd() / "pidog_pose_config.txt"      # file pose đứng hiện tại
-GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"    # file json bạn record dáng đi thẳng
+# ========= FILE =========
+POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
+GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 
-PORTS      = [f"P{i}" for i in range(12)]   # P0..P11
-LEG_PORTS  = [f"P{i}" for i in range(8)]    # chỉ chân P0..P7
-
+PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# thời gian giữa 2 frame – giảm số này để robot đi nhanh hơn
-FRAME_DELAY = 0.015      # 0.02 = chậm, 0.015 = nhanh hơn, 0.01 = rất nhanh
-LOOP_COUNT  = 0          # 0 = chạy vô hạn, >0 = số vòng lặp gait
+FRAME_DELAY = 0.025   # nhỏ = đi nhanh hơn, lớn = đi chậm hơn
 
-# ====== HÀM TIỆN ÍCH ======
+
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
     try:
         x = int(round(float(x)))
@@ -27,59 +23,78 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
         x = 0
     return max(lo, min(hi, x))
 
-def apply_pose(servos, pose: dict):
-    """Gửi góc đến tất cả servo."""
-    for p in PORTS:
-        servos[p].angle(clamp(pose[p]))
 
-# ====== MAIN ======
+def apply_pose(servos, pose: dict):
+    """Áp góc trực tiếp cho tất cả P0..P11."""
+    for p in PORTS:
+        servos[p].angle(clamp(pose.get(p, 0)))
+
+
+def load_base_pose() -> dict:
+    data = json.loads(POSE_FILE.read_text())
+    base = {k: clamp(v) for k, v in data.items()}
+    print("Base pose from config:", base)
+    return base
+
+
+def load_gait_frames():
+    raw = GAIT_FILE.read_text()
+
+    # vá JSON nếu cần
+    if not raw.lstrip().startswith("["):
+        raw = "[\n" + raw
+    if not raw.rstrip().endswith("]"):
+        raw = raw.rstrip() + "\n]"
+
+    frames = json.loads(raw)
+    # đảm bảo mỗi frame đủ 12 cổng
+    fixed = []
+    for f in frames:
+        pose = {}
+        for p in PORTS:
+            pose[p] = clamp(f.get(p, 0))
+        fixed.append(pose)
+
+    print(f"Loaded {len(fixed)} gait frames")
+    return fixed
+
+
 def main():
-    # khởi tạo servo
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Load base pose từ pidog_pose_config.txt
-    base = json.loads(POSE_FILE.read_text())
-    for k in base:
-        base[k] = clamp(base[k])
-
-    print("Base pose from config:", base)
+    # 1) load pose đứng chuẩn + đưa robot về dáng đó
+    base = load_base_pose()
     apply_pose(servos, base)
-    time.sleep(0.5)
+    sleep(0.6)
 
-    # 2) Load các frame dáng đi thẳng từ file JSON
-    #    File: [ { "P0":..., "P1":..., ..., "P7":... }, {...}, ... ]
-    gait_frames = json.loads(GAIT_FILE.read_text())
-    print(f"Loaded {len(gait_frames)} gait frames")
+    # 2) load các frame dáng đi thẳng
+    gait_frames = load_gait_frames()
 
-    # 3) Cho robot đứng đúng tư thế của frame đầu tiên
-    pose0 = base.copy()
-    for k in LEG_PORTS:
-        if k in gait_frames[0]:
-            pose0[k] = gait_frames[0][k]
-    apply_pose(servos, pose0)
-    time.sleep(0.3)
+    # Đưa robot từ base -> frame đầu tiên cho mượt
+    first = gait_frames[0]
+    steps = 30
+    for s in range(1, steps + 1):
+        t = s / steps
+        pose = {}
+        for p in PORTS:
+            v = base[p] + (first[p] - base[p]) * t
+            pose[p] = v
+        apply_pose(servos, pose)
+        sleep(FRAME_DELAY)
 
-    # 4) Lặp lại các frame để đi thẳng
-    loop = 0
-    print("Start forward gait replay…")
+    print("Start gait loop (Ctrl+C để dừng)…")
 
-    while True:
-        for frame in gait_frames:
-            pose = base.copy()
-            # chỉ override 8 chân, giữ nguyên đầu/đuôi theo base
-            for k in LEG_PORTS:
-                if k in frame:
-                    pose[k] = frame[k]
-            apply_pose(servos, pose)
-            time.sleep(FRAME_DELAY)
+    # 3) lặp vô hạn theo chuỗi gait
+    try:
+        while True:
+            for i, frame in enumerate(gait_frames):
+                apply_pose(servos, frame)
+                sleep(FRAME_DELAY)
+    except KeyboardInterrupt:
+        print("\nStop by user, về lại pose base.")
+        apply_pose(servos, base)
+        sleep(0.5)
 
-        loop += 1
-        if LOOP_COUNT > 0 and loop >= LOOP_COUNT:
-            break
-
-    # kết thúc: về lại dáng đứng base
-    apply_pose(servos, base)
-    print("Done, back to base pose.")
 
 if __name__ == "__main__":
     main()
