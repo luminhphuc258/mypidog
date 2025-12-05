@@ -6,6 +6,12 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
+# LED strip (không dùng Pidog)
+try:
+    from pidog.rgb_strip import RGBStrip
+except ImportError:
+    RGBStrip = None
+
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 
@@ -13,7 +19,12 @@ PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
 # tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
-FRAME_DELAY = 0.003      # bạn đang dùng giá trị nào thấy ổn thì giữ
+FRAME_DELAY = 0.003
+
+# Bỏ frame đầu (ngồi/lăn dậy)
+TRIM_HEAD_FRAMES = 200   # chỉnh nếu cần
+
+# Bỏ frame cuối (ngồi xuống lại)
 TRIM_TAIL_FRAMES = 350
 
 HEAD_TAIL_STATIC = {
@@ -96,11 +107,20 @@ def load_gait_frames():
     total = len(frames)
     print("Raw gait frames:", total)
 
-    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < total:
-        frames = frames[:-TRIM_TAIL_FRAMES]
-        print(f"After tail trim: {len(frames)} frames")
+    # 🔹 Bỏ frame đầu
+    if TRIM_HEAD_FRAMES > 0 and TRIM_HEAD_FRAMES < total:
+        frames = frames[TRIM_HEAD_FRAMES:]
+        print(f"After head trim ({TRIM_HEAD_FRAMES}): {len(frames)} frames")
     else:
-        print(f"Loaded {len(frames)} frames (no trim)")
+        print("No head trim applied.")
+
+    # 🔹 Bỏ frame cuối
+    total_after_head = len(frames)
+    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < total_after_head:
+        frames = frames[:-TRIM_TAIL_FRAMES]
+        print(f"After tail trim ({TRIM_TAIL_FRAMES}): {len(frames)} frames")
+    else:
+        print("No tail trim applied or tail trim too large.")
 
     return frames
 
@@ -127,7 +147,20 @@ def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec)
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Pose chuẩn ban đầu từ file config (dùng để khởi động & khi Ctrl+C)
+    # ==== RGB LED STRIP (không dùng Pidog) ====
+    strip = None
+    if RGBStrip is not None:
+        try:
+            strip = RGBStrip()
+            # LED xanh, sáng liên tục khi di chuyển
+            strip.set_mode(style="solid", color="blue", bps=1.2, brightness=0.8)
+        except Exception as e:
+            print("RGBStrip init failed:", e)
+            strip = None
+    else:
+        print("RGBStrip class not available – skip LED.")
+
+    # Pose chuẩn ban đầu từ file config
     base = load_base_pose()
     base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
 
@@ -145,7 +178,7 @@ def main():
         print("No gait frames found!")
         return
 
-    # base -> frame đầu
+    # base -> frame đầu (đã là tư thế đang đứng & bước)
     first = gait_frames[0]
     smooth_legs_transition(
         servos,
@@ -155,7 +188,7 @@ def main():
         duration_sec=STAND_TRANSITION_SEC / 2
     )
 
-    print(f"Start forward gait – chạy {NUM_LOOPS} vòng, giữa mỗi vòng đứng thẳng một chút.")
+    print(f"Start forward gait – chạy {NUM_LOOPS} vòng LIỀN, chỉ đứng sau vòng cuối.")
 
     frame_counter = 0
 
@@ -163,13 +196,11 @@ def main():
         for loop in range(NUM_LOOPS):
             print(f"== Loop {loop+1}/{NUM_LOOPS} ==")
 
-            # 🔁 CHẠY QUA TOÀN BỘ FRAME TRONG 1 VÒNG
+            # 🔁 ĐI QUA TOÀN BỘ FRAME TRONG 1 VÒNG (KHÔNG ĐỨNG GIỮA CÁC VÒNG)
             for idx, pose in enumerate(gait_frames):
                 frame_counter += 1
 
-                # Nếu muốn test chân cho mượt thì fix luôn:
-                # head_pitch = HEAD_PITCH_MIN
-                # Còn nếu vẫn thích lắc đầu:
+                # Lắc đầu (hoặc có thể fix head_pitch = HEAD_PITCH_MIN cho mượt)
                 if (frame_counter % HEAD_SHAKE_INTERVAL) < HEAD_SHAKE_WINDOW:
                     head_pitch += head_dir * HEAD_PITCH_STEP
                     if head_pitch >= HEAD_PITCH_MAX:
@@ -182,34 +213,41 @@ def main():
                     head_pitch = HEAD_PITCH_MIN
 
                 apply_pose(servos, pose, head_pitch)
+
+                # cập nhật hiệu ứng LED trong khi di chuyển
+                if strip is not None:
+                    try:
+                        strip.show()
+                    except Exception:
+                        pass
+
                 sleep(FRAME_DELAY)
 
-            # ✅ HẾT 1 VÒNG: VỀ ĐỨNG THẲNG
-            last_pose_legs = {f"P{i}": gait_frames[-1][f"P{i}"] for i in range(8)}
+        # 👉 SAU KHI XONG TẤT CẢ CÁC LOOP MỚI ĐỨNG THẲNG
+        last_pose_legs = {f"P{i}": gait_frames[-1][f"P{i}"] for i in range(8)}
 
-            smooth_legs_transition(
-                servos,
-                last_pose_legs,
-                stand_legs,
-                head_pitch=HEAD_PITCH_MIN,
-                duration_sec=STAND_TRANSITION_SEC
-            )
+        smooth_legs_transition(
+            servos,
+            last_pose_legs,
+            stand_legs,
+            head_pitch=HEAD_PITCH_MIN,
+            duration_sec=STAND_TRANSITION_SEC
+        )
 
-            apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
-            sleep(STAND_HOLD_SEC)
+        apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
+        sleep(STAND_HOLD_SEC)
 
-            # Nếu CHƯA phải vòng cuối → đứng -> frame đầu để đi tiếp
-            if loop < NUM_LOOPS - 1:
-                first = gait_frames[0]
-                smooth_legs_transition(
-                    servos,
-                    stand_legs,
-                    {f"P{i}": first[f"P{i}"] for i in range(8)},
-                    head_pitch=HEAD_PITCH_MIN,
-                    duration_sec=STAND_TRANSITION_SEC / 2
-                )
-                # reset counter cho chu kỳ lắc đầu, cho nó tự nhiên lại
-                frame_counter = 0
+        # TẮT LED & ĐÓNG STRIP
+        if strip is not None:
+            try:
+                strip.set_mode(style="solid", color=[0, 0, 0], bps=1, brightness=0)
+                strip.show()
+            except Exception:
+                pass
+            try:
+                strip.close()
+            except Exception:
+                pass
 
         print(f"Done {NUM_LOOPS} loops – robot đang đứng thẳng. Kết thúc chương trình.")
 
@@ -217,6 +255,18 @@ def main():
         print("\nStop by user – trả robot về pose chuẩn từ config.")
         apply_pose(servos, base, HEAD_PITCH_MIN)
         sleep(0.3)
+
+        # Khi Ctrl+C thì cũng tắt LED
+        if strip is not None:
+            try:
+                strip.set_mode(style="solid", color=[0, 0, 0], bps=1, brightness=0)
+                strip.show()
+            except Exception:
+                pass
+            try:
+                strip.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
