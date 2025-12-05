@@ -138,9 +138,9 @@ def main():
     # ==== RGB LED STRIP ====
     # giống như script riêng: tạo strip, set_mode, rồi cứ show() trong loop
     strip = RGBStrip()
-    print("Turn LED BLUE (solid) while walking...")
-    strip.set_mode(style="solid", color="blue", bps=1.2, brightness=0.8)
-    strip.show()   # đẩy trạng thái lần đầu
+    print("Turn LED BLUE (breath) while walking...")
+    strip.set_mode(style="breath", color="blue", bps=1.2, brightness=0.8)
+    strip.show()
 
     base = load_base_pose()
     base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
