@@ -6,117 +6,151 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
+POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 
-# ==== Speed & Smoothness ====
-STEP_DELAY = 0.005     # nhanh gấp đôi
-INTERP = 4             # mỗi frame chia nhỏ 4 bước → siêu mượt
+PORTS = [f"P{i}" for i in range(12)]
+CLAMP_LO, CLAMP_HI = -90, 90
 
-# ==== P8–P11: dùng góc chuẩn bạn đưa ====
-FIXED_UPPER = {
+# tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
+FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
+
+# Bỏ bớt một số frame cuối (đoạn ngồi xuống)
+TRIM_TAIL_FRAMES = 120   # thử bỏ 120 frame cuối, nếu vẫn thấy ngồi thì tăng số này
+
+# Góc CHUẨN cho head yaw & tail (P8, P9, P11)
+HEAD_TAIL_STATIC = {
     "P8": 32,
     "P9": -66,
-    "P10_min": -90,
-    "P10_max": -70,
     "P11": 0,
 }
 
-PORTS = [f"P{i}" for i in range(12)]
-for k in ["P8", "P9", "P10", "P11"]:
-    if k not in PORTS:
-        PORTS.append(k)
+# Lắc đầu trên P10 (head pitch)
+HEAD_PITCH_MIN = -90
+HEAD_PITCH_MAX = -70
+HEAD_PITCH_STEP = 1      # mỗi frame đổi 1 độ, muốn lắc nhanh hơn thì tăng lên 2
 
 
-def clamp(v):
-    return max(-90, min(90, int(v)))
+def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
+    try:
+        x = int(round(float(x)))
+    except Exception:
+        x = 0
+    return max(lo, min(hi, x))
+
+
+def apply_pose(servos, pose: dict, head_pitch: int):
+    """
+    Gửi góc cho tất cả servo.
+    - P0..P7 lấy từ pose (gait frame)
+    - P8, P9, P11 dùng góc chuẩn
+    - P10 dùng head_pitch đang lắc
+    """
+    send = dict(pose)
+
+    # ép static cho head yaw & tail
+    for k, v in HEAD_TAIL_STATIC.items():
+        send[k] = v
+
+    # head pitch đang lắc
+    send["P10"] = head_pitch
+
+    for p in PORTS:
+        servos[p].angle(clamp(send.get(p, 0)))
+
+
+def load_base_pose() -> dict:
+    data = json.loads(POSE_FILE.read_text())
+    base = {k: clamp(v) for k, v in data.items()}
+    print("Base pose from config:", base)
+    return base
 
 
 def load_gait_frames():
-    raw = GAIT_FILE.read_text().strip()
+    raw = GAIT_FILE.read_text()
 
-    # file có thể chứa dấu "," cuối → làm sạch
-    if raw.endswith(","):
-        raw = raw[:-1]
+    # nếu file không có [ ] bọc ngoài thì vá lại cho json.loads
+    if not raw.lstrip().startswith("["):
+        raw = "[\n" + raw
+    if not raw.rstrip().endswith("]"):
+        raw = raw.rstrip() + "\n]"
 
-    frames = json.loads(raw)
+    frames_raw = json.loads(raw)
 
-    # ==== BỎ FRAME CUỐI: tự động loại frame có dáng ngồi ====
-    cleaned = []
-    for fr in frames:
-        # loại frame bị gập chân: dấu hiệu ngồi
-        if fr["P0"] < 10 or fr["P3"] < -20:
-            continue
-        cleaned.append(fr)
-
-    print(f"Loaded {len(cleaned)} gait frames after cleaning")
-    return cleaned
-
-
-def blend(servos, prev, nxt):
-    """Nội suy mượt"""
-    for step in range(1, INTERP + 1):
-        t = step / INTERP
+    frames = []
+    for fr in frames_raw:
         pose = {}
-        for p in PORTS:
-            if p in ["P8", "P9", "P11"]:
-                pose[p] = FIXED_UPPER[p]
-            elif p == "P10":   # lắc đầu
-                pose[p] = clamp(
-                    FIXED_UPPER["P10_min"] +
-                    (FIXED_UPPER["P10_max"] - FIXED_UPPER["P10_min"]) * t
-                )
-            else:
-                pose[p] = clamp(prev[p] + (nxt[p] - prev[p]) * t)
+        # chỉ cần chắc chắn có đủ P0..P7, P8..P11 sẽ override khi apply
+        for i in range(8):
+            p = f"P{i}"
+            pose[p] = clamp(fr.get(p, 0))
+        # tạm thêm cho đủ key (sẽ bị override)
+        pose.update({
+            "P8": 0,
+            "P9": 0,
+            "P10": 0,
+            "P11": 0
+        })
+        frames.append(pose)
 
-        for p in PORTS:
-            servos[p].angle(pose[p])
+    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < len(frames):
+        frames = frames[:-TRIM_TAIL_FRAMES]
+        print(f"Loaded {len(frames)} gait frames (trimmed last {TRIM_TAIL_FRAMES})")
+    else:
+        print(f"Loaded {len(frames)} gait frames (no trim)")
 
-        sleep(STEP_DELAY)
+    return frames
 
 
 def main():
-    # chuẩn hóa servo
     servos = {p: Servo(p) for p in PORTS}
 
-    # load frames
-    frames = load_gait_frames()
-    if not frames:
-        print("No frames to run!")
+    # 1) Đưa robot về pose chuẩn từ config 1 lần lúc khởi động
+    base = load_base_pose()
+
+    # head pitch ban đầu để lắc
+    head_pitch = HEAD_PITCH_MIN
+    head_dir = +1  # +1 đang ngẩng lên, -1 cúi xuống
+
+    apply_pose(servos, base, head_pitch)
+    sleep(0.5)
+
+    # 2) Load toàn bộ frame dáng đi thẳng
+    gait_frames = load_gait_frames()
+    if not gait_frames:
+        print("No gait frames found!")
         return
 
-    # === dùng frame đầu tiên làm tư thế chuẩn ===
-    base = frames[0].copy()
-    base.update({
-        "P8": FIXED_UPPER["P8"],
-        "P9": FIXED_UPPER["P9"],
-        "P10": FIXED_UPPER["P10_min"],
-        "P11": FIXED_UPPER["P11"],
-    })
+    # Đưa thẳng robot từ base -> frame đầu tiên
+    first = gait_frames[0]
+    apply_pose(servos, first, head_pitch)
+    sleep(FRAME_DELAY)
+    current_index = 0
 
-    # đưa robot vào dáng chuẩn 1 lần duy nhất
-    for p in PORTS:
-        servos[p].angle(base[p])
-    sleep(0.3)
+    print("Start continuous forward gait with head nod… (Ctrl+C để dừng)")
 
-    print("🚀 Robot walking with cleaned gait + smooth speed + head wobble")
+    try:
+        while True:
+            # update head pitch lắc trong khoảng [-90, -70]
+            head_pitch += head_dir * HEAD_PITCH_STEP
+            if head_pitch >= HEAD_PITCH_MAX:
+                head_pitch = HEAD_PITCH_MAX
+                head_dir = -1
+            elif head_pitch <= HEAD_PITCH_MIN:
+                head_pitch = HEAD_PITCH_MIN
+                head_dir = +1
 
-    prev = base
-    head_toggle = False
+            # chuyển frame tiếp theo
+            current_index = (current_index + 1) % len(gait_frames)
+            pose = gait_frames[current_index]
 
-    while True:
-        for fr in frames:
-            # áp góc cố định P8–P11
-            fr2 = fr.copy()
-            fr2["P8"] = FIXED_UPPER["P8"]
-            fr2["P9"] = FIXED_UPPER["P9"]
-            fr2["P11"] = FIXED_UPPER["P11"]
+            apply_pose(servos, pose, head_pitch)
+            sleep(FRAME_DELAY)
 
-            # lắc đầu
-            fr2["P10"] = FIXED_UPPER["P10_max"] if head_toggle else FIXED_UPPER["P10_min"]
-            head_toggle = not head_toggle
-
-            blend(servos, prev, fr2)
-            prev = fr2
+    except KeyboardInterrupt:
+        print("\n Stop by user – trả robot về pose chuẩn.")
+        apply_pose(servos, base, HEAD_PITCH_MIN)
+        sleep(0.3)
 
 
 if __name__ == "__main__":
