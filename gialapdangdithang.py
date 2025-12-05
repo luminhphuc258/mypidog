@@ -154,10 +154,10 @@ def main():
 
     # 1) Đưa robot về pose chuẩn từ file 1 lần lúc khởi động
     base = load_base_pose()
-base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
+    base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
 
-# dùng pose đứng chuẩn cố định cho sau mỗi loop
-stand_legs = {f"P{i}": STAND_POSE[f"P{i}"] for i in range(8)}
+    # dùng pose đứng chuẩn cố định cho sau mỗi loop
+    stand_legs = {f"P{i}": STAND_POSE[f"P{i}"] for i in range(8)}
 
 
     # head pitch ban đầu để lắc
