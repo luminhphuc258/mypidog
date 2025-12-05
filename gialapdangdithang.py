@@ -16,7 +16,7 @@ CLAMP_LO, CLAMP_HI = -90, 90
 FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
 
 # Bỏ bớt một số frame cuối (đoạn ngồi xuống)
-TRIM_TAIL_FRAMES = 50   # giờ bỏ 300 frame cuối
+TRIM_TAIL_FRAMES = 350   # bỏ 350 frame cuối
 
 # Góc CHUẨN cho head yaw & tail (P8, P9, P11)
 HEAD_TAIL_STATIC = {
@@ -30,7 +30,7 @@ HEAD_PITCH_MIN = -90
 HEAD_PITCH_MAX = -70
 HEAD_PITCH_STEP = 1      # mỗi bước đổi 1 độ
 
-# Lắc “thỉnh thoảng” – ít lắc hơn
+# Lắc “thỉnh thoảng” – ít lắc
 HEAD_SHAKE_INTERVAL = 220   # sau ~220 frame mới bắt đầu 1 chu kỳ lắc
 HEAD_SHAKE_WINDOW  = 25     # mỗi lần chỉ lắc trong 25 frame
 
@@ -97,11 +97,36 @@ def load_gait_frames():
         })
         frames.append(pose)
 
-    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < len(frames):
+    total = len(frames)
+    print(f"Raw gait frames:", total)
+
+    # 1) Bỏ 350 frame cuối
+    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < total:
         frames = frames[:-TRIM_TAIL_FRAMES]
-        print(f"Loaded {len(frames)} gait frames (trimmed last {TRIM_TAIL_FRAMES})")
-    else:
-        print(f"Loaded {len(frames)} gait frames (no trim)")
+        print(f"After tail trim: {len(frames)} frames")
+
+    # 2) Tìm frame cuối giống frame đầu nhất để loop mượt
+    if len(frames) > 10:
+        first = frames[0]
+        best_idx = len(frames) - 1
+        best_score = float("inf")
+
+        # so sánh từ khoảng giữa về cuối để tìm chu kỳ
+        start_search = max(5, len(frames) // 2)
+        for i in range(start_search, len(frames)):
+            # đo độ lệch P0..P7
+            score = 0
+            for j in range(8):
+                p = f"P{j}"
+                diff = frames[i][p] - first[p]
+                score += diff * diff
+            if score < best_score:
+                best_score = score
+                best_idx = i
+
+        frames = frames[:best_idx + 1]
+        print(f"Cut loop at frame {best_idx}, continuity score = {best_score:.1f}")
+        print(f"Final gait length: {len(frames)} frames")
 
     return frames
 
@@ -109,7 +134,7 @@ def load_gait_frames():
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Đưa robot về pose chuẩn từ config 1 lần lúc khởi động
+    # 1) Đưa robot về pose chuẩn từ file 1 lần lúc khởi động
     base = load_base_pose()
 
     # head pitch ban đầu để lắc
@@ -139,7 +164,6 @@ def main():
             frame_counter += 1
 
             # --- LẮC ĐẦU THỈNH THOẢNG ---
-            # chỉ lắc trong HEAD_SHAKE_WINDOW frame mỗi chu kỳ HEAD_SHAKE_INTERVAL
             if (frame_counter % HEAD_SHAKE_INTERVAL) < HEAD_SHAKE_WINDOW:
                 head_pitch += head_dir * HEAD_PITCH_STEP
                 if head_pitch >= HEAD_PITCH_MAX:
@@ -152,10 +176,12 @@ def main():
                 # phần lớn thời gian giữ ở -90 (không lắc)
                 head_pitch = HEAD_PITCH_MIN
 
-            # chuyển frame tiếp theo
-            current_index = (current_index + 1) % len(gait_frames)
-            pose = gait_frames[current_index]
+            # chuyển frame tiếp theo (loop trơn vì đã cắt đúng điểm)
+            current_index += 1
+            if current_index >= len(gait_frames):
+                current_index = 0  # nhảy về frame 0 nhưng tư thế gần giống → không giật
 
+            pose = gait_frames[current_index]
             apply_pose(servos, pose, head_pitch)
             sleep(FRAME_DELAY)
 
