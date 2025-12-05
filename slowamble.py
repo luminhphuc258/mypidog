@@ -10,10 +10,8 @@ POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# ==== TĂNG TỐC ĐỘ ====
-# trước: MOVE_STEPS = 25, STEP_DELAY = 0.01
-MOVE_STEPS = 10       # ít bước nội suy hơn -> servo quay nhanh hơn
-STEP_DELAY = 0.004    # delay nhỏ hơn -> chuyển động “mạnh” và nhanh hơn
+STEP_DELAY = 0.01
+MOVE_STEPS = 25
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -50,32 +48,36 @@ def main():
     apply_pose(servos, base)
     sleep(0.3)
 
-    # ========= 4 STEP (giữ nguyên góc) =========
+    # ========= 4 STEP MỚI (theo ảnh bạn chụp) =========
 
+    # Step 1 – đứng thẳng 4 chân
     STEP1 = {
         "P0": -3,   "P1": 89,  "P2": 9,
-        "P3": -80,  "P4": 5,   "P5": 90,
+        "P3": -80,  "P4": 3,   "P5": 90,
         "P6": 10,   "P7": -90, "P8": -53,
         "P9": 90,   "P10": -90, "P11": 0,
     }
 
+    # Step 2 – chân trước phải bước lên, tăng lực P3, P5, P6
     STEP2 = {
-        "P0": -3,   "P1": 89,  "P2": 30,
-        "P3": -71,  "P4": 0,   "P5": 89,
+        "P0": -3,   "P1": 89,  "P2": 30,   # FR lên
+        "P3": -71,  "P4": 0,   "P5": 89,   # tăng lực chân sau trái (P3, P5)
         "P6": 14,   "P7": -90,
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
 
+    # Step 3 – chân sau phải lùi về sau
     STEP3 = {
         "P0": -3,   "P1": 89,  "P2": 30,
-        "P3": -80,  "P4": 5,   "P5": 90,
-        "P6": -23,  "P7": -90,
+        "P3": -80,  "P4": 3,   "P5": 90,
+        "P6": -23,  "P7": -90,  # RR đẩy mạnh ra sau
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
 
+    # Step 4 – chân trái trước & sau bước, P4 & P5 mạnh hơn
     STEP4 = {
         "P0": -41,  "P1": 89,  "P2": 30,
-        "P3": -56,  "P4": -19, "P5": 90,
+        "P3": -56,  "P4": -19, "P5": 90,   # RL xoay mạnh hơn (P4,P5)
         "P6": -23,  "P7": -90,
         "P8": -53,  "P9": 90,  "P10": -90, "P11": 0,
     }
@@ -86,14 +88,13 @@ def main():
     move_pose(servos, base, STEP1)
     current = STEP1
 
-    print("Start new 4-step amble (faster)…")
+    print("Start new 4-step amble…")
 
     while True:
         for nxt in STEPS[1:] + [STEP1]:
             move_pose(servos, current, nxt)
             current = nxt
-            # nghỉ rất nhỏ giữa các bước
-            sleep(0.002)
+            sleep(0.005)
 
 
 if __name__ == "__main__":
