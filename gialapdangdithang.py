@@ -6,14 +6,15 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
-# ========= FILE =========
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-FRAME_DELAY = 0.025   # nhỏ = đi nhanh hơn, lớn = đi chậm hơn
+# servo đi nhanh + mượt:
+FRAME_DELAY = 0.008      # thời gian nghỉ giữa mỗi bước nội suy
+INTERP_STEPS = 6         # số bước nội suy giữa 2 frame (5–8 là khá mượt)
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -25,9 +26,28 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
 
 
 def apply_pose(servos, pose: dict):
-    """Áp góc trực tiếp cho tất cả P0..P11."""
     for p in PORTS:
         servos[p].angle(clamp(pose.get(p, 0)))
+
+
+def lerp_pose(pose_from: dict, pose_to: dict, t: float) -> dict:
+    """Nội suy 0..1 giữa 2 pose."""
+    out = {}
+    for p in PORTS:
+        a = pose_from.get(p, 0)
+        b = pose_to.get(p, 0)
+        out[p] = a + (b - a) * t
+    return out
+
+
+def smooth_move(servos, pose_from: dict, pose_to: dict,
+                steps: int = INTERP_STEPS, delay: float = FRAME_DELAY):
+    """Di chuyển mượt giữa 2 frame."""
+    for s in range(1, steps + 1):
+        t = s / steps
+        pose = lerp_pose(pose_from, pose_to, t)
+        apply_pose(servos, pose)
+        sleep(delay)
 
 
 def load_base_pose() -> dict:
@@ -40,60 +60,62 @@ def load_base_pose() -> dict:
 def load_gait_frames():
     raw = GAIT_FILE.read_text()
 
-    # vá JSON nếu cần
+    # vá nếu file không có [ ] bọc ngoài
     if not raw.lstrip().startswith("["):
         raw = "[\n" + raw
     if not raw.rstrip().endswith("]"):
         raw = raw.rstrip() + "\n]"
 
-    frames = json.loads(raw)
-    # đảm bảo mỗi frame đủ 12 cổng
-    fixed = []
-    for f in frames:
+    frames_raw = json.loads(raw)
+
+    frames = []
+    for fr in frames_raw:
         pose = {}
         for p in PORTS:
-            pose[p] = clamp(f.get(p, 0))
-        fixed.append(pose)
+            pose[p] = clamp(fr.get(p, 0))
+        frames.append(pose)
 
-    print(f"Loaded {len(fixed)} gait frames")
-    return fixed
+    print(f"Loaded {len(frames)} gait frames")
+    return frames
 
 
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) load pose đứng chuẩn + đưa robot về dáng đó
+    # 1) Đưa robot về pose chuẩn từ config 1 LẦN ở đầu
     base = load_base_pose()
     apply_pose(servos, base)
     sleep(0.6)
 
-    # 2) load các frame dáng đi thẳng
+    # 2) Load toàn bộ frame dáng đi thẳng
     gait_frames = load_gait_frames()
+    if not gait_frames:
+        print("No gait frames found!")
+        return
 
-    # Đưa robot từ base -> frame đầu tiên cho mượt
+    # Đưa mượt từ base -> frame đầu tiên
     first = gait_frames[0]
-    steps = 30
-    for s in range(1, steps + 1):
-        t = s / steps
-        pose = {}
-        for p in PORTS:
-            v = base[p] + (first[p] - base[p]) * t
-            pose[p] = v
-        apply_pose(servos, pose)
-        sleep(FRAME_DELAY)
+    smooth_move(servos, base, first, steps=20, delay=FRAME_DELAY)
+    current = first
 
-    print("Start gait loop (Ctrl+C để dừng)…")
+    print("Start continuous forward gait (Ctrl+C để dừng)…")
 
-    # 3) lặp vô hạn theo chuỗi gait
+    # 3) Loop vô hạn qua tất cả frame (KHÔNG quay về pose base trong loop)
     try:
         while True:
-            for i, frame in enumerate(gait_frames):
-                apply_pose(servos, frame)
-                sleep(FRAME_DELAY)
+            for i in range(1, len(gait_frames)):
+                nxt = gait_frames[i]
+                smooth_move(servos, current, nxt)
+                current = nxt
+
+            # cuối list nối mượt về frame đầu để chu kỳ khép kín
+            nxt = gait_frames[0]
+            smooth_move(servos, current, nxt)
+            current = nxt
     except KeyboardInterrupt:
-        print("\nStop by user, về lại pose base.")
-        apply_pose(servos, base)
-        sleep(0.5)
+        print("\nStop by user – trả robot về pose chuẩn.")
+        smooth_move(servos, current, base, steps=20, delay=FRAME_DELAY)
+        sleep(0.3)
 
 
 if __name__ == "__main__":
