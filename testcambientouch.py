@@ -56,31 +56,39 @@ def play_bark():
 def main():
     touch = DualTouch()
 
-    last_val = None
-    last_bark_time = 0.0
-    DEBOUNCE_SEC = 0.5   # tránh spam quá nhanh
-
-    print("\n=== TEST TOUCH + BARK ===")
+    # Đọc giá trị ban đầu, chỉ log, KHÔNG bark
+    initial = touch.read()
+    try:
+        init_name = TouchStyle(initial).name
+    except Exception:
+        init_name = str(initial)
+    print(f"\n=== TEST TOUCH + BARK ===")
     print("Chạm vào đầu PiDog để nghe tiếng sủa.")
-    print("Nhấn Ctrl+C để dừng.\n")
+    print("Nhấn Ctrl+C để dừng.")
+    print(f"\n[INIT] trạng thái ban đầu: {init_name} ({initial})\n")
+
+    last_val = initial
+    last_bark_time = 0.0
+    DEBOUNCE_SEC = 0.5
 
     try:
         while True:
-            val = touch.read()   # giá trị touch thô
+            val = touch.read()
 
             if val != last_val:
-                now = time.time()
                 try:
                     name = TouchStyle(val).name
                 except Exception:
                     name = str(val)
-
                 print(f"[TOUCH] giá trị thay đổi: {name} ({val})")
 
-                if now - last_bark_time > DEBOUNCE_SEC:
-                    print("[TOUCH] -> BARK!")
-                    play_bark()
-                    last_bark_time = now
+                # CHỈ bark khi có chạm (val != 0) và không phải NONE
+                if val != 0 and name != "NONE":
+                    now = time.time()
+                    if now - last_bark_time > DEBOUNCE_SEC:
+                        print("[TOUCH] -> BARK!")
+                        play_bark()
+                        last_bark_time = now
 
                 last_val = val
 
@@ -88,6 +96,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[EXIT] Dừng test touch + bark.")
+
 
 
 if __name__ == "__main__":
