@@ -10,8 +10,8 @@ POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-STEP_DELAY = 0.01      # chuyển mượt
-MOVE_STEPS = 25        # số bước nội suy
+STEP_DELAY = 0.01
+MOVE_STEPS = 25
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -39,7 +39,7 @@ def move_pose(servos, pose_from, pose_to):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # ----- load pose đứng chuẩn từ file -----
+    # load pose đứng chuẩn
     base = json.loads(POSE_FILE.read_text())
     for k in base:
         base[k] = clamp(base[k])
@@ -48,9 +48,7 @@ def main():
     apply_pose(servos, base)
     sleep(0.4)
 
-    # ====== 4 STEP MỚI ======
-
-    # Step 1 – đứng 4 chân thẳng (giống base, chỉnh rất nhẹ nếu muốn)
+    # STEP 1 – đứng 4 chân thẳng
     STEP1 = {
         "P0": -3,   "P1": 89,  "P2": 9,
         "P3": -80,  "P4": 3,   "P5": 90,
@@ -58,7 +56,7 @@ def main():
         "P9": 90,   "P10": -90, "P11": 0,
     }
 
-    # Step 2 – chân trước phải bước lên (P2 = +30)
+    # STEP 2 – chân trước phải bước lên
     STEP2 = {
         "P0": -3,   "P1": 89,  "P2": 30,
         "P3": -80,  "P4": 3,   "P5": 90,
@@ -66,7 +64,7 @@ def main():
         "P9": 90,   "P10": -90, "P11": 0,
     }
 
-    # Step 3 – chân sau phải lùi về sau (P6 = -23, P2 vẫn +30) – hình bạn vừa chụp
+    # STEP 3 – chân sau phải lùi về sau
     STEP3 = {
         "P0": -3,   "P1": 89,  "P2": 30,
         "P3": -80,  "P4": 3,   "P5": 90,
@@ -74,9 +72,10 @@ def main():
         "P9": 90,   "P10": -90, "P11": 0,
     }
 
-    # Step 4 – chân trái trước & sau bước (dựa pose hình 4–5)
+    # STEP 4 – chân trái trước & sau bước (tăng lực P0)
+    # base P0 = -3  -> step4 P0 = -24  (lệch 21° giống bên phải)
     STEP4 = {
-        "P0": -12,  "P1": 90,  "P2": -7,
+        "P0": -24,  "P1": 90,  "P2": -7,
         "P3": -90,  "P4": 3,   "P5": 90,
         "P6": -23,  "P7": -90, "P8": -29,
         "P9": 90,   "P10": -90, "P11": 0,
@@ -84,7 +83,7 @@ def main():
 
     STEPS = [STEP1, STEP2, STEP3, STEP4]
 
-    # Về STEP1 trước
+    # về STEP1 trước
     move_pose(servos, base, STEP1)
     current = STEP1
 
