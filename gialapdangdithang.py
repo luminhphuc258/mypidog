@@ -12,9 +12,16 @@ GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# servo đi nhanh + mượt:
-FRAME_DELAY = 0.008      # thời gian nghỉ giữa mỗi bước nội suy
-INTERP_STEPS = 6         # số bước nội suy giữa 2 frame (5–8 là khá mượt)
+# mỗi frame dừng rất ngắn -> đi nhanh, bình thường
+FRAME_DELAY = 0.006     # thử 0.006s, muốn nhanh hơn nữa thì giảm còn 0.004–0.005
+
+# Góc CHUẨN cho head & tail (không lấy từ gait frame)
+HEAD_TAIL_POSE = {
+    "P8": 32,
+    "P9": -66,
+    "P10": -90,
+    "P11": 0,
+}
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -26,28 +33,15 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
 
 
 def apply_pose(servos, pose: dict):
+    """Gửi góc cho tất cả servo, P8..P11 luôn dùng góc chuẩn."""
+    # copy để không sửa pose gốc
+    send = dict(pose)
+    # ép head & tail dùng góc chuẩn
+    for k, v in HEAD_TAIL_POSE.items():
+        send[k] = v
+
     for p in PORTS:
-        servos[p].angle(clamp(pose.get(p, 0)))
-
-
-def lerp_pose(pose_from: dict, pose_to: dict, t: float) -> dict:
-    """Nội suy 0..1 giữa 2 pose."""
-    out = {}
-    for p in PORTS:
-        a = pose_from.get(p, 0)
-        b = pose_to.get(p, 0)
-        out[p] = a + (b - a) * t
-    return out
-
-
-def smooth_move(servos, pose_from: dict, pose_to: dict,
-                steps: int = INTERP_STEPS, delay: float = FRAME_DELAY):
-    """Di chuyển mượt giữa 2 frame."""
-    for s in range(1, steps + 1):
-        t = s / steps
-        pose = lerp_pose(pose_from, pose_to, t)
-        apply_pose(servos, pose)
-        sleep(delay)
+        servos[p].angle(clamp(send.get(p, 0)))
 
 
 def load_base_pose() -> dict:
@@ -60,7 +54,7 @@ def load_base_pose() -> dict:
 def load_gait_frames():
     raw = GAIT_FILE.read_text()
 
-    # vá nếu file không có [ ] bọc ngoài
+    # nếu file không có [ ] bọc ngoài thì vá lại cho json
     if not raw.lstrip().startswith("["):
         raw = "[\n" + raw
     if not raw.rstrip().endswith("]"):
@@ -71,8 +65,12 @@ def load_gait_frames():
     frames = []
     for fr in frames_raw:
         pose = {}
-        for p in PORTS:
+        # chỉ lấy P0..P7 từ frame; P8..P11 sẽ bị HEAD_TAIL_POSE ghi đè khi apply
+        for i in range(8):
+            p = f"P{i}"
             pose[p] = clamp(fr.get(p, 0))
+        # thêm luôn P8..P11 để pose đầy đủ (nhưng lúc gửi vẫn dùng HEAD_TAIL_POSE)
+        pose.update(HEAD_TAIL_POSE)
         frames.append(pose)
 
     print(f"Loaded {len(frames)} gait frames")
@@ -82,10 +80,10 @@ def load_gait_frames():
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Đưa robot về pose chuẩn từ config 1 LẦN ở đầu
+    # 1) Đưa robot về pose chuẩn từ config 1 LẦN lúc khởi động
     base = load_base_pose()
     apply_pose(servos, base)
-    sleep(0.6)
+    sleep(0.5)
 
     # 2) Load toàn bộ frame dáng đi thẳng
     gait_frames = load_gait_frames()
@@ -93,28 +91,24 @@ def main():
         print("No gait frames found!")
         return
 
-    # Đưa mượt từ base -> frame đầu tiên
+    # Đưa thẳng robot từ base -> frame đầu tiên
     first = gait_frames[0]
-    smooth_move(servos, base, first, steps=20, delay=FRAME_DELAY)
-    current = first
+    apply_pose(servos, first)
+    sleep(FRAME_DELAY)
+    current_index = 0
 
-    print("Start continuous forward gait (Ctrl+C để dừng)…")
+    print("Start continuous forward gait… (Ctrl+C để dừng)")
 
-    # 3) Loop vô hạn qua tất cả frame (KHÔNG quay về pose base trong loop)
     try:
         while True:
-            for i in range(1, len(gait_frames)):
-                nxt = gait_frames[i]
-                smooth_move(servos, current, nxt)
-                current = nxt
-
-            # cuối list nối mượt về frame đầu để chu kỳ khép kín
-            nxt = gait_frames[0]
-            smooth_move(servos, current, nxt)
-            current = nxt
+            # chạy lần lượt 0..N-1, sau đó quay lại 0
+            current_index = (current_index + 1) % len(gait_frames)
+            pose = gait_frames[current_index]
+            apply_pose(servos, pose)
+            sleep(FRAME_DELAY)
     except KeyboardInterrupt:
         print("\nStop by user – trả robot về pose chuẩn.")
-        smooth_move(servos, current, base, steps=20, delay=FRAME_DELAY)
+        apply_pose(servos, base)
         sleep(0.3)
 
 
