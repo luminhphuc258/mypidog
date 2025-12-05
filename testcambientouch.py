@@ -1,34 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Debug cảm biến touch trên đầu PiDog:
-- In liên tục giá trị cảm biến (raw + tên enum).
-- Nếu phát hiện có CHẠM (khác NONE) -> phát tiếng bark ra loa PiDog.
-
-KHÔNG tạo Pidog(), chỉ dùng DualTouch + aplay.
-"""
-
 import time
 import subprocess
 from pathlib import Path
 
-# ---- ép gpiozero dùng backend RPiGPIO (ổn định hơn cho robot_hat) ----
-from gpiozero import Device
-from gpiozero.pins.rpigpio import RPiGPIOFactory
-Device.pin_factory = RPiGPIOFactory()
-
 from pidog.dual_touch import DualTouch, TouchStyle
 
-# ====== CẤU HÌNH LOA & FILE BARK ======
-
-SPEAKER_DEVICE = "plughw:3,0"   # loa PiDog (Google voiceHAT sound card)
+# ====== LOA + FILE BARK ======
+SPEAKER_DEVICE = "plughw:3,0"
 
 CANDIDATES = [
     Path("/usr/local/lib/python3.11/dist-packages/pidog/res/bark.wav"),
     Path("/usr/local/lib/python3.9/dist-packages/pidog/res/bark.wav"),
     Path("/usr/local/lib/python3.11/dist-packages/pidog/res/dog_bark.wav"),
-    Path("/usr/share/sounds/alsa/Front_Center.wav"),  # fallback
+    Path("/usr/share/sounds/alsa/Front_Center.wav"),
 ]
 
 BARK_WAV = None
@@ -38,72 +24,72 @@ for p in CANDIDATES:
         break
 
 if BARK_WAV is None:
-    raise FileNotFoundError("Không tìm thấy file bark.wav, hãy sửa lại CANDIDATES.")
+    raise FileNotFoundError("Không tìm thấy file bark.wav, hãy sửa CANDIDATES.")
 
 print(f"[INFO] Dùng file sủa: {BARK_WAV}")
 
 
 def play_bark():
-    """Phát tiếng sủa ra loa PiDog & in log chi tiết."""
     cmd = ["aplay", "-D", SPEAKER_DEVICE, str(BARK_WAV)]
-    print("[BARK] chạy lệnh:", " ".join(cmd))
+    print("[BARK] run:", " ".join(cmd))
     try:
-        res = subprocess.run(cmd)
-        print("[BARK] aplay exit code:", res.returncode)
+        r = subprocess.run(cmd)
+        print("[BARK] exit code:", r.returncode)
     except Exception as e:
-        print("[BARK] Lỗi khi gọi aplay:", e)
+        print("[BARK] Lỗi aplay:", e)
 
 
 def main():
     touch = DualTouch()
 
-    # Lấy giá trị ban đầu
-    initial = touch.read()
+    init_val = touch.read()
     try:
-        init_name = TouchStyle(initial).name
+        init_name = TouchStyle(init_val).name
     except Exception:
-        init_name = str(initial)
+        init_name = str(init_val)
 
-    print("\n=== DEBUG TOUCH SENSOR + BARK ===")
-    print("Chạm / vuốt đầu PiDog, xem log thay đổi thế nào.")
+    print("\n=== DEBUG TOUCH SENSOR + BARK (NO Pidog) ===")
+    print("Chạm / vuốt đầu PiDog, xem raw & name có đổi không.")
     print("Nhấn Ctrl+C để dừng.\n")
-    print(f"[INIT] trạng thái ban đầu: raw={initial}, name={init_name}\n")
+    print(f"[INIT] raw={init_val}, name={init_name}\n")
 
-    # Giá trị NONE (không chạm) trong enum (nếu có)
+    # NONE value trong enum (nếu có)
     try:
         NONE_VALUE = TouchStyle.NONE.value
     except Exception:
-        NONE_VALUE = 0  # fallback nếu enum khác
+        NONE_VALUE = init_val  # fallback: coi trạng thái ban đầu là NONE
 
-    last_bark_time = 0.0
-    DEBOUNCE_SEC = 0.5
+    last_val = init_val
+    last_bark_time = 0
+    DEBOUNCE = 0.5
 
     try:
         while True:
             val = touch.read()
-
-            # Đổi ra tên enum nếu được
             try:
                 name = TouchStyle(val).name
             except Exception:
                 name = f"UNKNOWN({val})"
 
-            # Đánh dấu nếu có chạm
-            mark = "  <-- CHẠM" if val != NONE_VALUE else ""
+            changed = (val != last_val)
+            mark = ""
+            if changed:
+                mark = "  <-- CHANGED"
             print(f"[TOUCH] raw={val}, name={name}{mark}")
 
-            # Nếu KHÁC NONE thì cho sủa (có debounce)
-            if val != NONE_VALUE:
+            # chỉ bark khi chuyển từ NONE -> KHÁC NONE
+            if last_val == NONE_VALUE and val != NONE_VALUE:
                 now = time.time()
-                if now - last_bark_time > DEBOUNCE_SEC:
-                    print("[TOUCH] -> BARK!")
+                if now - last_bark_time > DEBOUNCE:
+                    print("[TOUCH] TRANSITION NONE -> TOUCHED -> BARK!")
                     play_bark()
                     last_bark_time = now
 
+            last_val = val
             time.sleep(0.2)
 
     except KeyboardInterrupt:
-        print("\n[EXIT] Dừng debug touch + bark.")
+        print("\n[EXIT] Dừng debug touch.")
 
 
 if __name__ == "__main__":
