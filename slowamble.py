@@ -39,42 +39,67 @@ def move_pose(servos, pose_from, pose_to):
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # ----- BASE từ file (4 chân thẳng) -----
+    # ---- Base từ file (đứng thẳng 4 chân) ----
     base = json.loads(POSE_FILE.read_text())
     for k in base:
         base[k] = clamp(base[k])
 
-    print("Loaded base pose from config:", base)
+    print("Loaded base pose:", base)
     apply_pose(servos, base)
-    sleep(0.5)
+    sleep(0.4)
 
-    # ----- STEP 1: đứng (chỉnh FL mạnh hơn chút) -----
-    step1 = dict(base)
-    # trước: base["P0"] - 2  -> giờ cho mạnh hơn
-    step1["P0"] = base["P0"] - 6    # FL tiến nhiều hơn
-    step1["P4"] = base["P4"] + 2    # RL hơi lui
+    # ========= 5 STEP THEO HÌNH BẠN GỬI =========
 
-    # ----- STEP 2: FR bước lên, FL tiến mạnh hơn -----
-    step2 = dict(step1)
-    step2["P2"] = 30                # FR lên trước như cũ
-    # trước: step1["P0"] - 3  -> giờ cho mạnh thêm để kéo sang phải
-    step2["P0"] = step1["P0"] - 6   # FL tiến thêm nữa
-    step2["P4"] = step1["P4"] + 3   # RL lui nhẹ
+    # Step 1 – đứng 4 chân thẳng
+    STEP1 = {
+        "P0": -3,   "P1": 89,  "P2": 9,
+        "P3": -80,  "P4": 3,   "P5": 90,
+        "P6": 10,   "P7": -90, "P8": -29,
+        "P9": 90,   "P10": -90,"P11": 0,
+    }
 
-    # ----- STEP 3: RR đẩy ra sau, RL đẩy nhẹ -----
-    step3 = dict(step1)
-    step3["P6"] = -23               # RR đẩy sau
-    step3["P4"] = step1["P4"] + 5   # RL hỗ trợ nhẹ
+    # Step 2 – chân trước phải bước lên (P2 = +30)
+    STEP2 = {
+        "P0": -3,   "P1": 89,  "P2": 30,
+        "P3": -80,  "P4": 3,   "P5": 90,
+        "P6": 10,   "P7": -90, "P8": -29,
+        "P9": 90,   "P10": -90,"P11": 0,
+    }
 
-    seq = [step1, step2, step3]
+    # Step 3 – chân sau phải lùi về sau (P6 = -23, P2 vẫn +30)
+    STEP3 = {
+        "P0": -3,   "P1": 89,  "P2": 30,
+        "P3": -80,  "P4": 3,   "P5": 90,
+        "P6": -23,  "P7": -90, "P8": -29,
+        "P9": 90,   "P10": -90,"P11": 0,
+    }
 
-    print("Starting balanced amble walk...")
+    # Step 4 – chân trái trước bước lên (theo hình 4)
+    STEP4 = {
+        "P0": -12,  "P1": 90,  "P2": 10,
+        "P3": -90,  "P4": 3,   "P5": 90,
+        "P6": -23,  "P7": -90, "P8": -29,
+        "P9": 90,   "P10": -90,"P11": 0,
+    }
 
-    current = step1
-    move_pose(servos, base, step1)
+    # Step 5 – chân trái sau bước (theo hình 5)
+    STEP5 = {
+        "P0": -12,  "P1": 90,  "P2": -7,
+        "P3": -90,  "P4": 3,   "P5": 90,
+        "P6": -23,  "P7": -90, "P8": -29,
+        "P9": 90,   "P10": -90,"P11": 0,
+    }
+
+    STEPS = [STEP1, STEP2, STEP3, STEP4, STEP5]
+
+    # về STEP1 trước cho trùng tư thế
+    move_pose(servos, base, STEP1)
+    current = STEP1
+
+    print("Start 5-step amble based on your poses...")
 
     while True:
-        for nxt in seq[1:] + [step1]:
+        for nxt in STEPS[1:] + [STEP1]:
             move_pose(servos, current, nxt)
             current = nxt
             sleep(0.005)
