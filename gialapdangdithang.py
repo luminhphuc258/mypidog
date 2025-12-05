@@ -13,46 +13,30 @@ PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
 # tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
-FRAME_DELAY = 0.006
+FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
 
 # Bỏ bớt một số frame cuối (đoạn ngồi xuống)
-TRIM_TAIL_FRAMES = 350
+TRIM_TAIL_FRAMES = 350   # bỏ 350 frame cuối
 
-# ===== POSE ĐỨNG CHUẨN SAU MỖI LOOP =====
-STAND_POSE = {
-    "P0": -3,
-    "P1": 89,
-    "P2": 9,
-    "P3": -80,
-    "P4": 11,
-    "P5": 90,
-    "P6": 10,
-    "P7": -90,
-    "P8": -53,
-    "P9": 90,
-    "P10": -90,
-    "P11": 0,
-}
-
-# Góc CHUẨN cho head yaw & tail (P8, P9, P11) – trùng với STAND_POSE
+# Góc CHUẨN cho head yaw & tail (P8, P9, P11)
 HEAD_TAIL_STATIC = {
-    "P8": -53,
-    "P9": 90,
+    "P8": 32,
+    "P9": -66,
     "P11": 0,
 }
 
 # Lắc đầu trên P10 (head pitch)
 HEAD_PITCH_MIN = -90
 HEAD_PITCH_MAX = -70
-HEAD_PITCH_STEP = 1
+HEAD_PITCH_STEP = 1      # mỗi bước đổi 1 độ
 
-# Lắc “thỉnh thoảng”
-HEAD_SHAKE_INTERVAL = 220
-HEAD_SHAKE_WINDOW = 25
+# Lắc “thỉnh thoảng” – ít lắc
+HEAD_SHAKE_INTERVAL = 220   # sau ~220 frame mới bắt đầu 1 chu kỳ lắc
+HEAD_SHAKE_WINDOW  = 25     # mỗi lần chỉ lắc trong 25 frame
 
 # Thời gian chuyển từ gait -> đứng thẳng và ngược lại
-STAND_TRANSITION_SEC = 1.0
-STAND_HOLD_SEC = 0.2
+STAND_TRANSITION_SEC = 1.0  # ~1 giây
+STAND_HOLD_SEC       = 0.2  # đứng yên một chút cho ổn định
 
 
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
@@ -67,8 +51,8 @@ def apply_pose(servos, pose: dict, head_pitch: int):
     """
     Gửi góc cho tất cả servo.
     - P0..P7 lấy từ pose (gait frame hoặc pose đứng)
-    - P8, P9, P11 dùng góc chuẩn HEAD_TAIL_STATIC
-    - P10 dùng head_pitch
+    - P8, P9, P11 dùng góc chuẩn
+    - P10 dùng head_pitch (có thể đang lắc hoặc giữ nguyên)
     """
     send = dict(pose)
 
@@ -108,14 +92,20 @@ def load_gait_frames():
         for i in range(8):
             p = f"P{i}"
             pose[p] = clamp(fr.get(p, 0))
-        pose.update({"P8": 0, "P9": 0, "P10": 0, "P11": 0})
+        # tạm thêm cho đủ key (sẽ bị override)
+        pose.update({
+            "P8": 0,
+            "P9": 0,
+            "P10": 0,
+            "P11": 0
+        })
         frames.append(pose)
 
     total = len(frames)
-    print("Raw gait frames:", total)
+    print(f"Raw gait frames:", total)
 
     # Bỏ tail frames
-    if 0 < TRIM_TAIL_FRAMES < total:
+    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < total:
         frames = frames[:-TRIM_TAIL_FRAMES]
         print(f"After tail trim: {len(frames)} frames")
     else:
@@ -127,7 +117,7 @@ def load_gait_frames():
 def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec):
     """
     Nội suy mượt P0..P7 từ pose_from -> pose_to trong duration_sec.
-    P8,P9,P11 giữ chuẩn; P10 = head_pitch cố định.
+    P8,P9,P11 giữ nguyên giá trị chuẩn; P10 = head_pitch cố định.
     """
     steps = max(1, int(duration_sec / FRAME_DELAY))
     for s in range(steps + 1):
@@ -138,7 +128,7 @@ def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec)
             a = pose_from[p]
             b = pose_to[p]
             interp[p] = a + (b - a) * t
-        # placeholder cho P8..P11
+        # place holder cho P8..P11
         interp.update({"P8": 0, "P9": 0, "P10": 0, "P11": 0})
         apply_pose(servos, interp, head_pitch)
         sleep(duration_sec / steps)
@@ -147,17 +137,16 @@ def smooth_legs_transition(servos, pose_from, pose_to, head_pitch, duration_sec)
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Đưa robot về pose chuẩn trong config 1 lần để sync servo
+    # 1) Đưa robot về pose chuẩn từ file 1 lần lúc khởi động
     base = load_base_pose()
-    apply_pose(servos, base, HEAD_PITCH_MIN)
-    sleep(0.5)
+    base_legs = {f"P{i}": base[f"P{i}"] for i in range(8)}
 
-    # Stand pose cố định sau mỗi loop
-    stand_legs = {f"P{i}": STAND_POSE[f"P{i}"] for i in range(8)}
-
-    # head pitch ban đầu
+    # head pitch ban đầu để lắc
     head_pitch = HEAD_PITCH_MIN
-    head_dir = +1
+    head_dir = +1  # +1 đang ngẩng lên, -1 cúi xuống
+
+    apply_pose(servos, base, head_pitch)
+    sleep(0.5)
 
     # 2) Load toàn bộ frame dáng đi thẳng
     gait_frames = load_gait_frames()
@@ -165,23 +154,16 @@ def main():
         print("No gait frames found!")
         return
 
-    # Chuyển từ base -> pose đứng chuẩn
-    base_legs = {f"P{i}": base.get(f"P{i}", STAND_POSE[f"P{i}"]) for i in range(8)}
-    smooth_legs_transition(servos, base_legs, stand_legs,
-                           head_pitch=HEAD_PITCH_MIN,
-                           duration_sec=STAND_TRANSITION_SEC)
-
-    # Từ đứng chuẩn -> frame đầu tiên
+    # Đưa thẳng robot từ base -> frame đầu tiên
     first = gait_frames[0]
-    first_legs = {f"P{i}": first[f"P{i}"] for i in range(8)}
-    smooth_legs_transition(servos, stand_legs, first_legs,
+    smooth_legs_transition(servos, base_legs, {f"P{i}": first[f"P{i}"] for i in range(8)},
                            head_pitch=HEAD_PITCH_MIN,
                            duration_sec=STAND_TRANSITION_SEC / 2)
 
     current_index = 0
     frame_counter = 0
 
-    print("Start forward gait with stand-pose between loops… (Ctrl+C để dừng)")
+    print("Start forward gait with stand-pause at end of each cycle… (Ctrl+C để dừng)")
 
     try:
         while True:
@@ -203,38 +185,40 @@ def main():
             apply_pose(servos, pose, head_pitch)
             sleep(FRAME_DELAY)
 
+            # Nếu tới frame cuối -> chuyển về đứng thẳng, giữ 1 chút, rồi lại vào frame 0
             if current_index == len(gait_frames) - 1:
-                # 1) frame cuối -> pose đứng chuẩn mới
-                last_legs = {f"P{i}": pose[f"P{i}"] for i in range(8)}
+                # 1) gait_last -> đứng thẳng
                 smooth_legs_transition(
                     servos,
-                    last_legs,
-                    stand_legs,
-                    head_pitch=HEAD_PITCH_MIN,
+                    {f"P{i}": pose[f"P{i}"] for i in range(8)},
+                    base_legs,
+                    head_pitch=HEAD_PITCH_MIN,         # đứng thẳng, không lắc
                     duration_sec=STAND_TRANSITION_SEC
                 )
 
-                # 2) giữ đứng chuẩn
-                apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
+                # 2) giữ đứng yên cho motor ổn định
+                apply_pose(servos, base, HEAD_PITCH_MIN)
                 sleep(STAND_HOLD_SEC)
 
-                # 3) đứng chuẩn -> frame đầu
+                # 3) đứng -> frame đầu tiên
+                first = gait_frames[0]
                 smooth_legs_transition(
                     servos,
-                    stand_legs,
-                    first_legs,
+                    base_legs,
+                    {f"P{i}": first[f"P{i}"] for i in range(8)},
                     head_pitch=HEAD_PITCH_MIN,
                     duration_sec=STAND_TRANSITION_SEC
                 )
 
+                # reset index & counter
                 current_index = 0
                 frame_counter = 0
             else:
                 current_index += 1
 
     except KeyboardInterrupt:
-        print("\nStop by user – trả robot về pose đứng chuẩn.")
-        apply_pose(servos, STAND_POSE, HEAD_PITCH_MIN)
+        print("\nStop by user – trả robot về pose chuẩn.")
+        apply_pose(servos, base, HEAD_PITCH_MIN)
         sleep(0.3)
 
 
