@@ -2,17 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-Test cảm biến touch trên đầu PiDog:
-- mỗi lần giá trị touch thay đổi -> in ra và phát tiếng sủa.
+Debug cảm biến touch trên đầu PiDog:
+- In liên tục giá trị cảm biến (raw + tên enum).
+- Nếu phát hiện có CHẠM (khác NONE) -> phát tiếng bark ra loa PiDog.
 
-KHÔNG dùng Pidog(), chỉ DualTouch + aplay.
+KHÔNG tạo Pidog(), chỉ dùng DualTouch + aplay.
 """
 
 import time
 import subprocess
 from pathlib import Path
 
-# ---- ép gpiozero dùng RPiGPIO (tránh backend lgpio chiếm GPIO) ----
+# ---- ép gpiozero dùng backend RPiGPIO (ổn định hơn cho robot_hat) ----
 from gpiozero import Device
 from gpiozero.pins.rpigpio import RPiGPIOFactory
 Device.pin_factory = RPiGPIOFactory()
@@ -21,7 +22,7 @@ from pidog.dual_touch import DualTouch, TouchStyle
 
 # ====== CẤU HÌNH LOA & FILE BARK ======
 
-SPEAKER_DEVICE = "plughw:3,0"   # loa PiDog (voiceHAT)
+SPEAKER_DEVICE = "plughw:3,0"   # loa PiDog (Google voiceHAT sound card)
 
 CANDIDATES = [
     Path("/usr/local/lib/python3.11/dist-packages/pidog/res/bark.wav"),
@@ -63,18 +64,17 @@ def main():
     except Exception:
         init_name = str(initial)
 
-    print("\n=== DEBUG TOUCH SENSOR ===")
+    print("\n=== DEBUG TOUCH SENSOR + BARK ===")
     print("Chạm / vuốt đầu PiDog, xem log thay đổi thế nào.")
     print("Nhấn Ctrl+C để dừng.\n")
     print(f"[INIT] trạng thái ban đầu: raw={initial}, name={init_name}\n")
 
-    # Giá trị NONE (không chạm) trong enum
+    # Giá trị NONE (không chạm) trong enum (nếu có)
     try:
         NONE_VALUE = TouchStyle.NONE.value
     except Exception:
         NONE_VALUE = 0  # fallback nếu enum khác
 
-    last_val = None
     last_bark_time = 0.0
     DEBOUNCE_SEC = 0.5
 
@@ -82,16 +82,16 @@ def main():
         while True:
             val = touch.read()
 
-            # Đổi sang tên enum (FRONT, REAR, v.v)
+            # Đổi ra tên enum nếu được
             try:
                 name = TouchStyle(val).name
             except Exception:
                 name = f"UNKNOWN({val})"
 
-            # In log MỖI VÒNG, để thấy rõ
+            # Đánh dấu nếu có chạm
             mark = "  <-- CHẠM" if val != NONE_VALUE else ""
-            print(f"[TOUCH] raw={val:2d}, name={name}{mark}")
-            
+            print(f"[TOUCH] raw={val}, name={name}{mark}")
+
             # Nếu KHÁC NONE thì cho sủa (có debounce)
             if val != NONE_VALUE:
                 now = time.time()
@@ -100,7 +100,6 @@ def main():
                     play_bark()
                     last_bark_time = now
 
-            last_val = val
             time.sleep(0.2)
 
     except KeyboardInterrupt:
