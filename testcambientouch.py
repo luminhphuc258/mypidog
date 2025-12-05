@@ -56,18 +56,25 @@ def play_bark():
 def main():
     touch = DualTouch()
 
-    # Đọc giá trị ban đầu, chỉ log, KHÔNG bark
+    # Lấy giá trị ban đầu
     initial = touch.read()
     try:
         init_name = TouchStyle(initial).name
     except Exception:
         init_name = str(initial)
-    print(f"\n=== TEST TOUCH + BARK ===")
-    print("Chạm vào đầu PiDog để nghe tiếng sủa.")
-    print("Nhấn Ctrl+C để dừng.")
-    print(f"\n[INIT] trạng thái ban đầu: {init_name} ({initial})\n")
 
-    last_val = initial
+    print("\n=== DEBUG TOUCH SENSOR ===")
+    print("Chạm / vuốt đầu PiDog, xem log thay đổi thế nào.")
+    print("Nhấn Ctrl+C để dừng.\n")
+    print(f"[INIT] trạng thái ban đầu: raw={initial}, name={init_name}\n")
+
+    # Giá trị NONE (không chạm) trong enum
+    try:
+        NONE_VALUE = TouchStyle.NONE.value
+    except Exception:
+        NONE_VALUE = 0  # fallback nếu enum khác
+
+    last_val = None
     last_bark_time = 0.0
     DEBOUNCE_SEC = 0.5
 
@@ -75,28 +82,29 @@ def main():
         while True:
             val = touch.read()
 
-            if val != last_val:
-                try:
-                    name = TouchStyle(val).name
-                except Exception:
-                    name = str(val)
-                print(f"[TOUCH] giá trị thay đổi: {name} ({val})")
+            # Đổi sang tên enum (FRONT, REAR, v.v)
+            try:
+                name = TouchStyle(val).name
+            except Exception:
+                name = f"UNKNOWN({val})"
 
-                # CHỈ bark khi có chạm (val != 0) và không phải NONE
-                if val != 0 and name != "NONE":
-                    now = time.time()
-                    if now - last_bark_time > DEBOUNCE_SEC:
-                        print("[TOUCH] -> BARK!")
-                        play_bark()
-                        last_bark_time = now
+            # In log MỖI VÒNG, để thấy rõ
+            mark = "  <-- CHẠM" if val != NONE_VALUE else ""
+            print(f"[TOUCH] raw={val:2d}, name={name}{mark}")
+            
+            # Nếu KHÁC NONE thì cho sủa (có debounce)
+            if val != NONE_VALUE:
+                now = time.time()
+                if now - last_bark_time > DEBOUNCE_SEC:
+                    print("[TOUCH] -> BARK!")
+                    play_bark()
+                    last_bark_time = now
 
-                last_val = val
-
-            time.sleep(0.05)
+            last_val = val
+            time.sleep(0.2)
 
     except KeyboardInterrupt:
-        print("\n[EXIT] Dừng test touch + bark.")
-
+        print("\n[EXIT] Dừng debug touch + bark.")
 
 
 if __name__ == "__main__":
