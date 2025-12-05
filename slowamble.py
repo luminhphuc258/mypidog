@@ -3,91 +3,97 @@
 
 import json
 from time import sleep
-from robot_hat import Servo
 from pathlib import Path
+from robot_hat import Servo
 
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 PORTS = [f"P{i}" for i in range(12)]
+CLAMP_LO, CLAMP_HI = -90, 90
 
-MOVE_STEPS = 30
-STEP_DELAY = 0.01       # nhỏ để robot không bị té
+STEP_DELAY = 0.01      # chuyển mượt
+MOVE_STEPS = 25        # nội suy mượt
 
+# ==========================
+# POSE 1 – ĐỨNG 4 CHÂN THẲNG
+# ==========================
+POSE1 = {
+  "P0": -3,  "P1": 89,  "P2": 9,
+  "P3": -80, "P4": 3,   "P5": 90,
+  "P6": 10,  "P7": -90, "P8": -29,
+  "P9": 90,  "P10": -90, "P11": 0
+}
 
-def clamp(x, lo=-90, hi=90):
-    return max(lo, min(hi, int(x)))
+# ==============================
+# POSE 2 – NHẤC CHÂN TRƯỚC PHẢI
+# (P2 tăng lên)
+# ==============================
+POSE2 = {
+  "P0": -3,  "P1": 89,  "P2": 30,
+  "P3": -80, "P4": 3,   "P5": 90,
+  "P6": 10,  "P7": -90, "P8": -29,
+  "P9": 90,  "P10": -90, "P11": 0
+}
 
+# ==============================
+# POSE 3 – ĐẨY CHÂN SAU PHẢI RA SAU
+# (P6 giảm xuống)
+# ==============================
+POSE3 = {
+  "P0": -3,   "P1": 89,  "P2": 9,
+  "P3": -80,  "P4": 3,   "P5": 90,
+  "P6": -23,  "P7": -90, "P8": -29,
+  "P9": 90,   "P10": -90, "P11": 0
+}
 
-def load_pose():
-    data = json.loads(POSE_FILE.read_text())
-    pose = {}
-    for p in PORTS:
-        pose[p] = clamp(data.get(p, 0))
-    return pose
-
+# ====== UTILS ======
+def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
+    try:
+        x = int(round(float(x)))
+    except:
+        x = 0
+    return max(lo, min(hi, x))
 
 def apply_pose(servos, pose):
     for p in PORTS:
-        servos[p].angle(pose[p])
+        servos[p].angle(clamp(pose[p]))
 
-
-def move_pose(servos, old, new):
+def move_pose(servos, pose_from, pose_to):
     for s in range(1, MOVE_STEPS + 1):
         t = s / MOVE_STEPS
         for p in PORTS:
-            v = old[p] + (new[p] - old[p]) * t
+            v = pose_from[p] + (pose_to[p] - pose_from[p]) * t
             servos[p].angle(clamp(v))
         sleep(STEP_DELAY)
 
-
-def offset(base, **kw):
-    out = dict(base)
-    for k,v in kw.items():
-        out[k] = clamp(out[k] + v)
-    return out
-
-
+# ==========================
+# MAIN
+# ==========================
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    BASE = load_pose()
-    print("Loaded BASE pose:", BASE)
+    # 1) Load pose đứng chuẩn từ file
+    base = json.loads(POSE_FILE.read_text())
+    for k in base: base[k] = clamp(base[k])
 
-    apply_pose(servos, BASE)
-    sleep(0.3)
+    print("Loaded base pose from config")
+    apply_pose(servos, base)
+    sleep(0.5)
+
+    # 2) BẮT ĐẦU ĐI AMBLE
+    print("Starting 3-pose amble walk…")
+
+    seq = [POSE1, POSE2, POSE3]
 
     while True:
-
-        # === STEP 1: Nhấc chân trước phải FR (P2,P3) ===
-        step1 = offset(BASE,
-            P2 = +12,   # shoulder FR nâng ra trước
-            P3 = -12    # knee FR gập nhẹ
-        )
-        move_pose(servos, BASE, step1)
-
-        # === STEP 2: Đặt FR xuống hơi phía trước để tiến ===
-        step2 = offset(BASE,
-            P2 = -5,   # shoulder kéo FR ra trước
-            P3 = +5
-        )
-        move_pose(servos, step1, step2)
-
-        # === STEP 3: Nhấc chân sau phải RR (P6,P7) ===
-        step3 = offset(BASE,
-            P6 = +10,   # shoulder RR nâng
-            P7 = -10
-        )
-        move_pose(servos, step2, step3)
-
-        # === STEP 4: Đẩy RR về sau để tạo lực tiến ===
-        step4 = offset(BASE,
-            P6 = -8,   # shoulder RR đẩy
-            P7 = +8
-        )
-        move_pose(servos, step3, step4)
-
-        # Quay về base cho ổn định
-        move_pose(servos, step4, BASE)
-
+        current = base
+        for nxt in seq:
+            move_pose(servos, current, nxt)
+            current = nxt
+            sleep(0.01)   # rất nhỏ để không té
+        
+        # quay về pose đứng trong file config
+        move_pose(servos, current, base)
+        sleep(0.01)
 
 if __name__ == "__main__":
     main()
