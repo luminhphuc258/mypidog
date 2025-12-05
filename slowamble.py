@@ -17,8 +17,8 @@ SETUP_STEPS = 25
 SETUP_DELAY = 0.02
 
 # Nội suy cho gait: nhanh nhưng vẫn mượt
-MOVE_STEPS = 10        # càng nhỏ → chuyển càng nhanh, lực hơn
-STEP_DELAY = 0.01      # delay giữa mỗi bước nội suy
+MOVE_STEPS = 8        # càng nhỏ → chuyển càng nhanh, lực hơn
+STEP_DELAY = 0.008      # delay giữa mỗi bước nội suy
 STEP_HOLD = 0.0        # gần như không nghỉ ở mỗi step
 
 CYCLES = 80            # số vòng lặp 4 step
@@ -65,32 +65,26 @@ def move_pose(servos: dict, pose_from: dict, pose_to: dict,
 # ============== 4 STEP MỚI (từ 4 hình) ==============
 
 # Hình 1
-STEP1 = {
+STEP1 = {  # stand
     "P0": 52, "P1": -19, "P2": -49, "P3": 29,
     "P4": 59, "P5": -5,  "P6": -40, "P7": 8,
     "P8": -29, "P9": 90, "P10": -90, "P11": 0,
 }
 
 # Hình 2
-STEP2 = {
-    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
-    "P4": 48, "P5": 90,  "P6": -36, "P7": -90,
-    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
-}
+STEP2 = dict(STEP1)
+STEP2["P4"] = STEP1["P4"] - 20   # hông sau trái đưa về phía trước
+STEP2["P5"] = STEP1["P5"] + 30   # nhấc bàn chân sau trái lên
 
 # Hình 3
-STEP3 = {
-    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
-    "P4": -37, "P5": 90, "P6": -36, "P7": -90,
-    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
-}
+STEP3 = dict(STEP2)
+STEP3["P4"] = STEP1["P4"] + 10   # hông sau trái đạp ra sau
+STEP3["P5"] = STEP1["P5"] + 5    # hơi duỗi chân, chạm đất chắc
 
 # Hình 4
-STEP4 = {
-    "P0": 38, "P1": -19, "P2": -30, "P3": 29,
-    "P4": 3,  "P5": 90,  "P6": 14, "P7": -90,
-    "P8": -29, "P9": 90, "P10": -90, "P11": 0,
-}
+STEP4 = dict(STEP1)
+STEP4["P6"] = STEP1["P6"] + 20   # hông sau phải đưa về phía trước
+STEP4["P7"] = STEP1["P7"] - 30   
 
 STEPS = [STEP1, STEP2, STEP3, STEP4]
 
