@@ -6,31 +6,33 @@ from time import sleep
 from pathlib import Path
 from robot_hat import Servo
 
+# ====== FILE & CONSTANT ======
 POSE_FILE = Path.cwd() / "pidog_pose_config.txt"
 GAIT_FILE = Path.cwd() / "dangdithang_thuvien.txt"
 
 PORTS = [f"P{i}" for i in range(12)]
 CLAMP_LO, CLAMP_HI = -90, 90
 
-# tốc độ: mỗi frame dừng rất ngắn -> đi nhanh, không lag
-FRAME_DELAY = 0.006      # muốn nhanh hơn có thể giảm 0.004–0.005
+# nhanh hơn & mượt
+MOVE_STEPS = 12        # nội suy giữa 2 frame
+STEP_DELAY = 0.004     # delay rất nhỏ
 
-# Bỏ bớt một số frame cuối (đoạn ngồi xuống)
-TRIM_TAIL_FRAMES = 120   # thử bỏ 120 frame cuối, nếu vẫn thấy ngồi thì tăng số này
+# chỉ dùng phần ĐI THẲNG, bỏ hết đoạn cuối có ngồi xuống
+KEEP_FRAMES = 600      # nếu vẫn dính ngồi, tăng số này lên / nếu đi ít quá, giảm dần
 
-# Góc CHUẨN cho head yaw & tail (P8, P9, P11)
-HEAD_TAIL_STATIC = {
-    "P8": 32,
-    "P9": -66,
-    "P11": 0,
+# dùng head / tail chuẩn, không lấy từ file gait
+FIXED_HEAD_TAIL = {
+    "P8": -29,   # yaw
+    "P9":  90,   # roll
+    "P10": -90,  # pitch (sẽ lắc từ -90 -> -70)
+    "P11":  0,   # tail
 }
 
-# Lắc đầu trên P10 (head pitch)
-HEAD_PITCH_MIN = -90
-HEAD_PITCH_MAX = -70
-HEAD_PITCH_STEP = 1      # mỗi frame đổi 1 độ, muốn lắc nhanh hơn thì tăng lên 2
+HEAD_MIN = -90
+HEAD_MAX = -70
 
 
+# ========= UTILS =========
 def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
     try:
         x = int(round(float(x)))
@@ -39,118 +41,112 @@ def clamp(x, lo=CLAMP_LO, hi=CLAMP_HI):
     return max(lo, min(hi, x))
 
 
-def apply_pose(servos, pose: dict, head_pitch: int):
-    """
-    Gửi góc cho tất cả servo.
-    - P0..P7 lấy từ pose (gait frame)
-    - P8, P9, P11 dùng góc chuẩn
-    - P10 dùng head_pitch đang lắc
-    """
-    send = dict(pose)
-
-    # ép static cho head yaw & tail
-    for k, v in HEAD_TAIL_STATIC.items():
-        send[k] = v
-
-    # head pitch đang lắc
-    send["P10"] = head_pitch
-
+def apply_pose(servos, pose: dict):
     for p in PORTS:
-        servos[p].angle(clamp(send.get(p, 0)))
+        servos[p].angle(clamp(pose[p]))
 
 
-def load_base_pose() -> dict:
-    data = json.loads(POSE_FILE.read_text())
-    base = {k: clamp(v) for k, v in data.items()}
-    print("Base pose from config:", base)
-    return base
+def blend_pose(a: dict, b: dict, t: float) -> dict:
+    """Nội suy 2 pose a -> b (0..1)."""
+    out = {}
+    for p in PORTS:
+        out[p] = clamp(a[p] + (b[p] - a[p]) * t)
+    return out
 
 
-def load_gait_frames():
-    raw = GAIT_FILE.read_text()
-
-    # nếu file không có [ ] bọc ngoài thì vá lại cho json.loads
-    if not raw.lstrip().startswith("["):
-        raw = "[\n" + raw
-    if not raw.rstrip().endswith("]"):
-        raw = raw.rstrip() + "\n]"
-
-    frames_raw = json.loads(raw)
-
-    frames = []
-    for fr in frames_raw:
-        pose = {}
-        # chỉ cần chắc chắn có đủ P0..P7, P8..P11 sẽ override khi apply
-        for i in range(8):
-            p = f"P{i}"
-            pose[p] = clamp(fr.get(p, 0))
-        # tạm thêm cho đủ key (sẽ bị override)
-        pose.update({
-            "P8": 0,
-            "P9": 0,
-            "P10": 0,
-            "P11": 0
-        })
-        frames.append(pose)
-
-    if TRIM_TAIL_FRAMES > 0 and TRIM_TAIL_FRAMES < len(frames):
-        frames = frames[:-TRIM_TAIL_FRAMES]
-        print(f"Loaded {len(frames)} gait frames (trimmed last {TRIM_TAIL_FRAMES})")
-    else:
-        print(f"Loaded {len(frames)} gait frames (no trim)")
-
-    return frames
+def move_pose(servos, pose_from: dict, pose_to: dict):
+    """Chuyển mượt giữa 2 pose."""
+    for s in range(1, MOVE_STEPS + 1):
+        t = s / MOVE_STEPS
+        pose = blend_pose(pose_from, pose_to, t)
+        apply_pose(servos, pose)
+        sleep(STEP_DELAY)
 
 
+# ========= MAIN =========
 def main():
     servos = {p: Servo(p) for p in PORTS}
 
-    # 1) Đưa robot về pose chuẩn từ config 1 lần lúc khởi động
-    base = load_base_pose()
+    # --- load pose đứng chuẩn từ file config ---
+    base = json.loads(POSE_FILE.read_text())
+    for k in base:
+        base[k] = clamp(base[k])
 
-    # head pitch ban đầu để lắc
-    head_pitch = HEAD_PITCH_MIN
-    head_dir = +1  # +1 đang ngẩng lên, -1 cúi xuống
-
-    apply_pose(servos, base, head_pitch)
+    print("Base pose from config:", base)
+    apply_pose(servos, base)
     sleep(0.5)
 
-    # 2) Load toàn bộ frame dáng đi thẳng
-    gait_frames = load_gait_frames()
-    if not gait_frames:
-        print("No gait frames found!")
+    # --- đọc file gait (dạng JSON từng dòng) ---
+    raw = GAIT_FILE.read_text().strip().splitlines()
+    frames = []
+    for line in raw:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            f = json.loads(line.rstrip(","))
+        except Exception:
+            continue
+
+        # ép đủ P0..P11
+        pose = {}
+        for p in PORTS:
+            if p in f:
+                pose[p] = clamp(f[p])
+            else:
+                pose[p] = base.get(p, 0)
+
+        # luôn dùng head/tail chuẩn
+        for hp, v in FIXED_HEAD_TAIL.items():
+            pose[hp] = v
+
+        frames.append(pose)
+
+    if not frames:
+        print("No gait frames loaded!")
         return
 
-    # Đưa thẳng robot từ base -> frame đầu tiên
-    first = gait_frames[0]
-    apply_pose(servos, first, head_pitch)
-    sleep(FRAME_DELAY)
-    current_index = 0
+    print("Loaded", len(frames), "gait frames from file")
 
-    print("Start continuous forward gait with head nod… (Ctrl+C để dừng)")
+    # cắt bỏ đoạn cuối (ngồi xuống)
+    if KEEP_FRAMES < len(frames):
+        frames = frames[:KEEP_FRAMES]
+        print("Trimmed to first", len(frames), "frames (walk only).")
+
+    # đưa robot từ base -> frame đầu tiên
+    first = frames[0]
+    move_pose(servos, base, first)
+    current = first
+
+    # chuẩn bị lắc đầu P10
+    head_pitch = HEAD_MIN
+    head_dir = +1   # +1: lên tới -70, -1: xuống lại -90
+
+    print("Start forward walk loop… (Ctrl+C to stop)")
 
     try:
         while True:
-            # update head pitch lắc trong khoảng [-90, -70]
-            head_pitch += head_dir * HEAD_PITCH_STEP
-            if head_pitch >= HEAD_PITCH_MAX:
-                head_pitch = HEAD_PITCH_MAX
-                head_dir = -1
-            elif head_pitch <= HEAD_PITCH_MIN:
-                head_pitch = HEAD_PITCH_MIN
-                head_dir = +1
+            for nxt in frames[1:] + [first]:
+                # lắc đầu nhẹ mỗi bước
+                head_pitch += head_dir * 1.5
+                if head_pitch > HEAD_MAX:
+                    head_pitch = HEAD_MAX
+                    head_dir = -1
+                if head_pitch < HEAD_MIN:
+                    head_pitch = HEAD_MIN
+                    head_dir = +1
 
-            # chuyển frame tiếp theo
-            current_index = (current_index + 1) % len(gait_frames)
-            pose = gait_frames[current_index]
+                # ép giá trị P10 cho cả pose_from & pose_to
+                current["P10"] = head_pitch
+                nxt = dict(nxt)
+                nxt["P10"] = head_pitch
 
-            apply_pose(servos, pose, head_pitch)
-            sleep(FRAME_DELAY)
-
+                move_pose(servos, current, nxt)
+                current = nxt
     except KeyboardInterrupt:
-        print("\n Stop by user – trả robot về pose chuẩn.")
-        apply_pose(servos, base, HEAD_PITCH_MIN)
-        sleep(0.3)
+        # về tư thế đứng chuẩn khi thoát
+        move_pose(servos, current, base)
+        print("\nStopped, back to base pose.")
 
 
 if __name__ == "__main__":
