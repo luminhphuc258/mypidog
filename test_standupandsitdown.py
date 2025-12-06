@@ -3,41 +3,40 @@
 
 import time
 from matthewpidogclassinit import MatthewPidogBootClass
-from pidog.preset_actions import push_up
 
 def main():
-    print("=== Init PiDog bằng MatthewPidogBootClass -> push_up x3 ===")
+    print("=== Init (MatthewPidogBootClass) -> SIT -> STAND ===")
 
-    # 1) init dog bằng class của bạn
     boot = MatthewPidogBootClass(
-        cleanup_gpio=True,      # tránh GPIO busy
+        cleanup_gpio=True,
         kill_python=False,
-        enable_prepose=True,    # nếu class bạn có prepose
+        enable_prepose=True,
         prepose_delay_sec=1.0
     )
 
-    # tùy class bạn đặt tên hàm tạo dog là gì:
-    # - nếu bạn dùng boot.create() thì chạy được
-    # - nếu bạn dùng boot.boot() thì đổi lại 1 dòng dưới
+    # Nếu class bạn dùng method khác (vd boot.init()), đổi đúng 1 dòng này:
     dog = boot.create()
 
     try:
-        # ổn định trước khi làm động tác
         print("[STABLE] wait 1s ...")
         time.sleep(1.0)
 
-        # 2) push_up 3 lần
-        for i in range(3):
-            print(f"[ACTION] push_up {i+1}/3")
-            push_up(dog, speed=92)
-            if hasattr(dog, "wait_all_done"):
-                dog.wait_all_done()
-            time.sleep(0.3)
+        print("[ACTION] sit ...")
+        dog.do_action("sit", speed=90)
+        dog.wait_all_done()
+        time.sleep(0.6)
 
-        print("[DONE] push_up x3 complete.")
+        print("[ACTION] stand ...")
+        dog.do_action("stand", speed=92)
+        dog.wait_all_done()
+        time.sleep(0.5)
+
+        print("[DONE]")
 
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f"\033[31mERROR: {e}\033[m")
     finally:
         try:
             dog.close()
