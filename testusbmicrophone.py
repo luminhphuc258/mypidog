@@ -7,8 +7,13 @@ import wave
 import numpy as np
 import time
 
-from robot_hat import audio
-audio.init()
+from robot_hat import Sound
+
+# Kích hoạt hệ thống audio
+snd = Sound()
+
+print("Audio device initialized!")
+
 
 # ==== DEVICE CỤ THỂ TỪ OUTPUT CỦA BẠN ====
 USB_MIC_DEVICE = "plughw:4,0"     # USB PnP Microphone
