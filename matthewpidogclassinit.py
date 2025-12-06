@@ -240,4 +240,48 @@ class MatthewPidogBootClass:
             Servo(port).angle(angle)
             sleep(hold)
             print(f"[FORCE] {port} -> {angle} deg (bypass pidog)")
+            return True
+        except Exception as e:
+            print(f"[FORCE ERROR] {port}: {e}")
+            return False
+
+    # ===================== CREATE PIDOG =====================
+
+    def create(self) -> Pidog:
+        # (A) cleanup GPIO busy trước (nếu cần)
+        if self.cleanup_gpio:
+            self.cleanup_gpio_busy()
+
+        # (B) unlock speaker
+        self.unlock_robothat_speaker()
+
+        # (C) pre-pose bằng robot_hat (nếu bật)
+        if self.enable_prepose:
+            self.apply_pose_from_file()
+
+        # (D) init pidog với mảng cố định
+        print("\nInit PiDog (fixed init arrays)...")
+        print("LEG_PINS :", self.LEG_PINS,  "angles:", self.LEG_INIT_ANGLES)
+        print("HEAD_PINS:", self.HEAD_PINS, "angles:", self.HEAD_INIT_ANGLES)
+        print("TAIL_PIN :", self.TAIL_PIN,  "angle :", self.TAIL_INIT_ANGLE)
+
+        self.dog = Pidog(
+            leg_pins=self.LEG_PINS,
+            head_pins=self.HEAD_PINS,
+            tail_pin=self.TAIL_PIN,
+            leg_init_angles=self.LEG_INIT_ANGLES,
+            head_init_angles=self.HEAD_INIT_ANGLES,
+            tail_init_angle=self.TAIL_INIT_ANGLE
+        )
+
+        if hasattr(self.dog, "wait_all_done"):
+            self.dog.wait_all_done()
+
+        # (E) force head sau init
+        if self.enable_force_head:
+            sleep(0.2)
+            self.force_servo_angle(self.force_head_port, self.force_head_angle, hold=0.4)
+
+        return self.dog
+
 
