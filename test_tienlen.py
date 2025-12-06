@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import time
-from pidog_bootstrap import PidogBootstrap
+from matthewpidogclassinit import MatthewPidogBootClass
 
 
 def main():
-    boot = PidogBootstrap(
+    boot = MatthewPidogBootClass(
         pose_file="pidog_pose_config.txt",
         enable_force_head=True,
         force_head_port="P10",
