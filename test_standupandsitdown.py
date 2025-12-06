@@ -203,7 +203,7 @@ def main():
     time.sleep(1.0)
 
     # 3) -> Pose A (nhẹ)
-    runner.go_to_in_phases(POSE_A, name="POSE A", settle_sec=SETTLE_SEC)
+    runner.go_to_in_phases(POSE_A, name="POSE A", settle_sec=SETTLE_SEC,  skip_ports={"P4", "P5"})
 
     # 4) -> Pose B (nhẹ)
     runner.go_to_in_phases(POSE_B, name="POSE B", settle_sec=SETTLE_SEC)
