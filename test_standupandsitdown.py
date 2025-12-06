@@ -4,11 +4,12 @@
 import time
 import subprocess
 from time import sleep
+
 from robot_hat import Servo
-from pidog import Pidog
+from matthewpidogclassinit import MatthewPidogBootClass
 
 
-# ===== POSE PRE-INIT (theo hình bạn upload) =====
+# ===== POSE (theo hình bạn upload) =====
 PREPOSE = {
     "P0":  -4,
     "P1":  87,
@@ -24,6 +25,7 @@ PREPOSE = {
     "P11":  0,
 }
 
+# thứ tự ít té: head/tail -> rear -> front
 PREPOSE_ORDER = ["P8", "P9", "P10", "P11", "P4", "P5", "P6", "P7", "P0", "P1", "P2", "P3"]
 
 
@@ -43,7 +45,7 @@ def apply_pose_robot_hat(pose: dict, order, step_delay=0.03):
 
 
 def cleanup_gpio_busy():
-    # Fix lgpio/gpiozero: GPIO busy
+    # giải phóng GPIO để bootclass/pidog reset_mcu không bị lgpio GPIO busy
     subprocess.run(
         ["bash", "-lc", "sudo fuser -k /dev/gpiochip* /dev/gpiomem /dev/mem 2>/dev/null || true"],
         check=False
@@ -52,28 +54,31 @@ def cleanup_gpio_busy():
 
 
 def main():
-    print("=== PREPOSE -> delay 1s -> cleanup GPIO -> init Pidog ===")
+    print("=== PREPOSE -> delay 1s -> BootClass init ===")
 
-    # 1) PREPOSE
-    print("[1] Pre-pose by robot_hat.Servo ...")
+    # 1) Pre-pose (robot_hat only)
+    print("[1] Pre-pose motors by robot_hat.Servo ...")
     apply_pose_robot_hat(PREPOSE, PREPOSE_ORDER, step_delay=0.03)
 
-    # 2) stabilize
+    # 2) Delay 1s stabilize
     print("[2] Stabilize 1.0s ...")
     time.sleep(1.0)
 
-    # 3) release GPIO for pidog.reset_mcu()
-    print("[3] Cleanup GPIO busy ...")
+    # 3) Cleanup GPIO busy BEFORE bootclass init (pidog calls reset_mcu)
+    print("[3] Cleanup GPIO busy before BootClass.create() ...")
     cleanup_gpio_busy()
 
-    # 4) init pidog
-    print("[4] Init Pidog() ...")
-    dog = Pidog()
+    # 4) Init robot using your class
+    print("[4] Init by MatthewPidogBootClass ...")
+    boot = MatthewPidogBootClass(
+        cleanup_gpio=False,      # vì mình đã cleanup ở step 3
+        kill_python=False,
+        enable_prepose=False     # vì mình đã prepose ở step 1
+    )
 
-    if hasattr(dog, "wait_all_done"):
-        dog.wait_all_done()
+    dog = boot.create()
 
-    print("[DONE] OK")
+    print("[DONE] Robot init OK via BootClass.")
     try:
         dog.close()
     except:
