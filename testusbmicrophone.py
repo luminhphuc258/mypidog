@@ -7,10 +7,10 @@ import wave
 import numpy as np
 import time
 
-from robot_hat import Sound
+from pidog import Pidog
 
-# Kích hoạt hệ thống audio
-snd = Sound()
+dog = Pidog()   # KHỞI TẠO — tự động bật hệ thống audio I2S
+print("Pidog audio initialized!")
 
 print("Audio device initialized!")
 
