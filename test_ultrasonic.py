@@ -1,14 +1,24 @@
 from robot_hat import Pin
-import robot_hat.pin as pinlib
 import time
 
-print("=== SCANNING ALL Robot HAT PINS ===")
+print("=== SCAN ALL AVAILABLE Robot HAT PINS ===")
 
-# Lấy danh sách PIN AVAILABLE trên Robot HAT
-VALID_PINS = list(pinlib.pin_dict.values())
-print("Valid pins:", VALID_PINS)
+# Thử lấy danh sách PIN từ class Pin
+try:
+    VALID_PINS = Pin.PIN_LIST
+    print("Using Pin.PIN_LIST")
+except:
+    try:
+        VALID_PINS = Pin._pin.values()
+        print("Using Pin._pin.values()")
+    except:
+        raise Exception("Không thể lấy danh sách pin! Thư viện robot_hat quá khác version.")
 
-# Khởi tạo mọi pin là INPUT (dù có thể vài pin không đọc được)
+# Chuyển sang dạng list template
+VALID_PINS = list(VALID_PINS)
+print("Valid PINs detected:", VALID_PINS)
+
+# Khởi tạo input pin objects
 pins = []
 for p in VALID_PINS:
     try:
@@ -17,23 +27,22 @@ for p in VALID_PINS:
     except Exception as e:
         print(f"Cannot init pin {p}: {e}")
 
-print(f"Watching {len(pins)} pins...\n")
-print("Touch / kích hoạt cảm biến để xem pin nào thay đổi.")
-print("Nhấn Ctrl+C để dừng.\n")
+print(f"\nWatching {len(pins)} pins...")
+print("Chạm cảm biến → xem pin nào đổi trạng thái\n")
 
-last = {}
+last_state = {}
 
 try:
     while True:
         for p, obj in pins:
             try:
                 v = obj.value()
-                if last.get(p) != v:
-                    print(f"Pin {p} → {v}")
-                    last[p] = v
+                if last_state.get(p) != v:
+                    print(f"Pin {p} = {v}")
+                    last_state[p] = v
             except:
                 pass
-        time.sleep(0.05)
+        time.sleep(0.03)
 
 except KeyboardInterrupt:
     print("\nSTOP.")
