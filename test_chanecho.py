@@ -1,30 +1,39 @@
+#!/usr/bin/env python3
 import RPi.GPIO as GPIO
 import time
 
-PIN = 19  # chân SIG từ module
+# List toàn bộ GPIO khả dụng (BCM)
+GPIO_LIST = [2,3,4,5,6,7,8,9,10,11,12,13,16,17,18,19,20,21,22,23,24,25,26,27]
 
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(PIN, GPIO.IN)
 
-print("=== TEST PiDog HEAD DISTANCE SENSOR (PWM) ===")
+print("=== SCANNING ALL GPIO FOR ACTIVE SENSOR SIGNALS ===")
+print("Nhấn Ctrl + C để dừng...\n")
+
+# Setup tất cả chân làm input có pull-down để tránh nhiễu
+for pin in GPIO_LIST:
+    try:
+        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+    except Exception as e:
+        print(f"[SKIP] GPIO {pin}: {e}")
+
+# Lưu trạng thái trước đó để phát hiện thay đổi
+prev_state = {pin: GPIO.input(pin) for pin in GPIO_LIST}
 
 try:
     while True:
-        # chờ tín hiệu lên
-        while GPIO.input(PIN) == 0:
-            pass
-        start = time.time()
+        for pin in GPIO_LIST:
+            try:
+                current = GPIO.input(pin)
+                if current != prev_state[pin]:
+                    print(f"[CHANGE] GPIO {pin} → {current}")
+                    prev_state[pin] = current
+            except:
+                pass
 
-        # chờ tín hiệu xuống
-        while GPIO.input(PIN) == 1:
-            pass
-        end = time.time()
-
-        pulse_width = end - start
-        distance_cm = pulse_width * 1000000 / 58.0   # công thức gần giống HC-SR04 PWM
-
-        print(f"Distance: {distance_cm:.1f} cm")
-        time.sleep(0.05)
+        time.sleep(0.001)
 
 except KeyboardInterrupt:
+    print("Stopping scan...")
+finally:
     GPIO.cleanup()
