@@ -30,8 +30,9 @@ def read_gyro():
     return gx, gy, gz
 
 def read_temp():
-    t = bus.read_byte_data(ADDR_TEMP, 0x00)
-    return t
+    raw = read_word(ADDR_ACC, 0x09)
+    temp_c = raw / 512.0 + 23   # công thức từ datasheet SH3001
+    return temp_c
 
 print("=== IMU SH3001 RAW READING ===")
 
