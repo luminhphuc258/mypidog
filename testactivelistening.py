@@ -111,18 +111,30 @@ def download_audio(url):
 
 
 def play_audio(filepath):
-    """Phát âm thanh bằng aplay."""
-    print(f"[PLAY] Playing {filepath} ...")
+    print(f"[PLAY] Đang choi nhac {filepath}")
+    
+    # Nếu file là mp3 → convert sang wav
+    if filepath.endswith(".mp3"):
+        filepath = convert_mp3_to_wav(filepath)
 
-    cmd = [
-        "aplay",
-        "-D", SPEAKER_DEVICE,
-        "-q",
-        filepath,
-    ]
-
+    cmd = ["aplay", "-D", SPEAKER_DEVICE, "-q", filepath]
     subprocess.run(cmd, check=False)
     print("[PLAY] Done.")
+
+
+def convert_mp3_to_wav(mp3_path):
+    wav_path = mp3_path.replace(".mp3", ".wav")
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", mp3_path,
+        "-ac", "1",
+        "-ar", "16000",
+        wav_path
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return wav_path
+
 
 
 # ================== MAIN LOOP ==================
