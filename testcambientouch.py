@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import time
-import RPi.GPIO as GPIO
+from gpiozero import DigitalInputDevice
 
-# Theo log lỗi trước đó: touch_L = GPIO27 (pin 13)
-PIN_L = 2      # BCM 27
-PIN_R = 3      # tạm đoán touch_R = 22, nếu không đổi thì mình sẽ thử chân khác
+# D2 -> GPIO27, D3 -> GPIO22
+LEFT_PIN = 27   # dây xanh lá (S1)
+RIGHT_PIN = 22  # dây vàng (S2)
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(PIN_L, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(PIN_R, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+# Dual touch của SunFounder thường là "active-low"
+# nên mình bật pull_up=True, rồi sẽ tự đảo giá trị sau
+left_touch = DigitalInputDevice(LEFT_PIN, pull_up=True)
+right_touch = DigitalInputDevice(RIGHT_PIN, pull_up=True)
 
-print("=== RAW GPIO TOUCH TEST ===")
+print("=== RAW DUAL TOUCH TEST ===")
 print("Chạm lần lượt vào 2 cảm biến trên đầu.")
 print("Nhấn Ctrl+C để dừng.\n")
+print("Format:  L=0/1  R=0/1  (1 = đang chạm, 0 = không chạm)\n")
 
 try:
     while True:
-        vL = GPIO.input(PIN_L)
-        vR = GPIO.input(PIN_R)
-        # v = 1 nghĩa là không chạm (do PULL_UP), 0 là đang chạm (đa số cảm biến active-LOW)
-        print(f"L={vL}   R={vR}", end="\r", flush=True)
+        # gpiozero trả .value = 1 khi mức logic HIGH (không chạm, vì pull-up)
+        # dual touch thường kéo xuống LOW khi chạm -> mình đảo lại cho dễ hiểu
+        L = 1 - int(left_touch.value)
+        R = 1 - int(right_touch.value)
+
+        print(f"L={L}  R={R}", end="\r")
         time.sleep(0.05)
+
 except KeyboardInterrupt:
-    print("\n[EXIT] Stop raw GPIO test.")
-finally:
-    GPIO.cleanup()
+    print("\n[EXIT] Dừng test dual touch.")
