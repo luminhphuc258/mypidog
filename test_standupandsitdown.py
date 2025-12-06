@@ -154,25 +154,31 @@ class SmoothPoseRunner:
             if port in target:
                 self.current[port] = float(target[port])
 
-    def go_to_in_phases(self, target: dict, name="POSE", settle_sec=SETTLE_SEC):
-        print(f"\n=== MOVE -> {name} ===")
-        for phase in PHASES:
-            if phase == ["__DELAY1__"]:
-                print(f"[PHASE] delay {INTER_PHASE_DELAY_1:.1f}s ...")
-                time.sleep(INTER_PHASE_DELAY_1)
-                continue
+    def go_to_in_phases(self, target: dict, name="POSE", settle_sec=SETTLE_SEC, skip_ports=None):
+    if skip_ports is None:
+        skip_ports = set()
+    else:
+        skip_ports = set(skip_ports)
 
-            # chỉ move những port có trong target
-            move_ports = [p for p in phase if p in target]
-            if not move_ports:
-                continue
+    print(f"\n=== MOVE -> {name} ===")
+    for phase in PHASES:
+        if phase == ["__DELAY1__"]:
+            print(f"[PHASE] delay {INTER_PHASE_DELAY_1:.1f}s ...")
+            time.sleep(INTER_PHASE_DELAY_1)
+            continue
 
-            print(f"[PHASE] moving {move_ports} ...")
-            self._move_ports_smooth(target, move_ports)
+        # chỉ move những port có trong target và KHÔNG nằm trong skip_ports
+        move_ports = [p for p in phase if (p in target and p not in skip_ports)]
+        if not move_ports:
+            continue
 
-        if settle_sec and settle_sec > 0:
-            print(f"[STABLE] settle {settle_sec:.1f}s ...")
-            time.sleep(settle_sec)
+        print(f"[PHASE] moving {move_ports} ...")
+        self._move_ports_smooth(target, move_ports)
+
+    if settle_sec and settle_sec > 0:
+        print(f"[STABLE] settle {settle_sec:.1f}s ...")
+        time.sleep(settle_sec)
+
 
 
 def main():
@@ -184,7 +190,12 @@ def main():
         print("[ERROR] Không đọc được pose config -> dừng.")
         return
 
-    runner.go_to_in_phases(pose_cfg, name="CONFIG FILE POSE", settle_sec=0.0)
+    runner.go_to_in_phases(
+    pose_cfg,
+    name="CONFIG FILE POSE",
+    settle_sec=0.0,
+    skip_ports={"P4", "P5"}
+)
 
     # 2) delay 1s theo yêu cầu
     print("\n[STEP] Delay 1s after config pose...")
