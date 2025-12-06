@@ -239,4 +239,5 @@ class MatthewPidogBootClass:
         try:
             Servo(port).angle(angle)
             sleep(hold)
-            print(f"[FORCE] {port} -> {angle}°
+            print(f"[FORCE] {port} -> {angle} deg (bypass pidog)")
+
