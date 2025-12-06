@@ -7,6 +7,9 @@ import wave
 import numpy as np
 import time
 
+from robot_hat import audio
+audio.init()
+
 # ==== DEVICE CỤ THỂ TỪ OUTPUT CỦA BẠN ====
 USB_MIC_DEVICE = "plughw:4,0"     # USB PnP Microphone
 SPEAKER_DEVICE = "plughw:3,0"     # Loa voiceHAT trên PiDog
