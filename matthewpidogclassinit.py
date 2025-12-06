@@ -2,12 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import os
-import re
-import json
 import shutil
 import subprocess
+import time
 from time import sleep
-from pathlib import Path
 
 from pidog import Pidog
 from robot_hat import Servo
@@ -15,48 +13,61 @@ from robot_hat import Servo
 
 class MatthewPidogBootClass:
     """
-    Reusable helper:
-    - unlock speaker (SPK_EN)
-    - load LEG_INIT_ANGLES from pose file (P0..P7)
-    - init Pidog
-    - force head servo after init (bypass pidog)
+    - Unlock Robot-HAT/PiDog speaker via SPK_EN GPIO (như i2samp.sh)
+    - Init Pidog theo mảng góc LEG_INIT_ANGLES cố định (KHÔNG đọc file config)
+    - (Optional) Force head servo sau init (bypass giới hạn pidog)
     """
+
+    # ===== fixed pins mapping =====
+    LEG_PINS  = [0, 1, 2, 3, 4, 5, 6, 7]
+    HEAD_PINS = [8, 9, 10]   # [NECK_PITCH, NECK_TILT, HEAD_YAW]
+    TAIL_PIN  = [11]
+
+    # ✅ fixed init angles (theo bạn yêu cầu)
+    LEG_INIT_ANGLES = [-3, 60, 9, -60, 3, 60, 10, -60]
+
+    # giữ nguyên như trước
+    HEAD_INIT_ANGLES = [20, -45, -90]
+    TAIL_INIT_ANGLE  = [30]  # MUST be list
+
+    CONFIG_PATHS = ["/boot/firmware/config.txt", "/boot/config.txt"]
 
     def __init__(
         self,
         speaker_device: str = "plughw:3,0",
-        pose_file: str | Path = "pidog_pose_config.txt",
-        leg_pins=None,
-        head_pins=None,
-        tail_pin=None,
-        head_init_angles=None,
-        tail_init_angle=None,
+        enable_force_head: bool = True,
         force_head_port: str = "P10",
         force_head_angle: float = -90,
-        enable_force_head: bool = True,
+        stabilize_sec: float = 1.0,   # cho servo ổn định chống té
+        cleanup_gpio: bool = False,   # nếu muốn auto dọn GPIO busy
+        kill_python: bool = False,    # mạnh tay (chỉ dùng khi bị GPIO busy hoài)
     ):
         self.speaker_device = speaker_device
-        self.pose_file = Path(pose_file) if not isinstance(pose_file, Path) else pose_file
-
-        self.leg_pins = leg_pins or [0, 1, 2, 3, 4, 5, 6, 7]
-        self.head_pins = head_pins or [8, 9, 10]
-        self.tail_pin  = tail_pin  or [11]
-
-        # giữ nguyên như code bạn
-        self.head_init_angles = head_init_angles or [20, -45, -90]
-        self.tail_init_angle  = tail_init_angle or [30]
-
+        self.enable_force_head = enable_force_head
         self.force_head_port = force_head_port
         self.force_head_angle = force_head_angle
-        self.enable_force_head = enable_force_head
+        self.stabilize_sec = stabilize_sec
 
-        self.dog: Pidog | None = None
+        self.cleanup_gpio = cleanup_gpio
+        self.kill_python = kill_python
+
+        self.dog = None
+
+    # ===================== GPIO CLEANUP (optional) =====================
+
+    def cleanup_gpio_busy(self):
+        print("[CLEAN] Free GPIO devices...")
+        subprocess.run(
+            ["bash", "-lc", "sudo fuser -k /dev/gpiochip* /dev/gpiomem /dev/mem 2>/dev/null || true"],
+            check=False
+        )
+        if self.kill_python:
+            subprocess.run(["bash", "-lc", "sudo killall -q python3 python || true"], check=False)
+        time.sleep(0.2)
 
     # ===================== AUDIO UNLOCK (SPK_EN) =====================
 
-    CONFIG_PATHS = ["/boot/firmware/config.txt", "/boot/config.txt"]
-
-    def _read_boot_config(self) -> str:
+    def _read_boot_config(self):
         for p in self.CONFIG_PATHS:
             if os.path.exists(p):
                 try:
@@ -65,7 +76,7 @@ class MatthewPidogBootClass:
                     pass
         return ""
 
-    def detect_spk_en_pin(self) -> int:
+    def detect_spk_en_pin(self):
         txt = self._read_boot_config()
         lines = [ln.split("#", 1)[0].strip() for ln in txt.splitlines()]
         overlays = [ln for ln in lines if ln.startswith("dtoverlay=")]
@@ -104,7 +115,7 @@ class MatthewPidogBootClass:
                 wf.writeframes(b"\x00\x00" * (16000 // 10))
         subprocess.run(["aplay", "-D", self.speaker_device, "-q", silence], check=False)
 
-    def unlock_speaker(self) -> bool:
+    def unlock_robothat_speaker(self):
         pin = self.detect_spk_en_pin()
         ok = self.set_gpio_high(pin)
         if not ok:
@@ -118,70 +129,11 @@ class MatthewPidogBootClass:
         print(f"[OK] Speaker unlocked (SPK_EN GPIO{pin})")
         return True
 
-    # ===================== LOAD LEG_INIT_ANGLES FROM FILE =====================
-
-    def _parse_pose_file(self, path: Path) -> dict[int, float]:
-        txt = path.read_text(encoding="utf-8", errors="ignore").strip()
-
-        # JSON first
-        try:
-            obj = json.loads(txt)
-            out = {}
-            for k, v in obj.items():
-                m = re.search(r"(\d+)", str(k))
-                if m:
-                    out[int(m.group(1))] = float(v)
-            return out
-        except Exception:
-            pass
-
-        out = {}
-        for line in txt.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("//"):
-                continue
-
-            m = re.search(r"[Pp]\s*(\d+)\s*[:=]\s*(-?\d+(?:\.\d+)?)", line)
-            if m:
-                out[int(m.group(1))] = float(m.group(2))
-                continue
-
-            nums = re.findall(r"-?\d+(?:\.\d+)?", line)
-            if len(nums) >= 2:
-                ch = int(float(nums[0]))
-                ang = float(nums[1])
-                out[ch] = ang
-
-        return out
-
-    def load_leg_init_angles(self, fallback=None):
-        fallback = fallback or [-3, 89, 9, -80, 3, 90, 10, -90]
-
-        try:
-            if not self.pose_file.exists():
-                print(f"[WARN] Không thấy {self.pose_file}, dùng fallback LEG_INIT_ANGLES.")
-                return fallback
-
-            pose = self._parse_pose_file(self.pose_file)
-            missing = [i for i in range(8) if i not in pose]
-            if missing:
-                print(f"[WARN] Pose file thiếu {missing} (P0..P7). Dùng fallback.")
-                return fallback
-
-            leg_angles = [pose[i] for i in range(8)]
-            print(f"[OK] Loaded LEG_INIT_ANGLES from {self.pose_file}: {leg_angles}")
-            return leg_angles
-
-        except Exception as e:
-            print(f"[WARN] Lỗi đọc pose file: {e}. Dùng fallback.")
-            return fallback
-
     # ===================== FORCE SERVO =====================
 
-    def force_servo_angle(self, port: str, angle: float, hold=0.3) -> bool:
+    def force_servo_angle(self, port: str, angle: float, hold=0.3):
         if angle < -90: angle = -90
         if angle > 90:  angle = 90
-
         try:
             s = Servo(port)
             s.angle(angle)
@@ -189,37 +141,42 @@ class MatthewPidogBootClass:
             print(f"[FORCE] {port} -> {angle}° (bypass pidog)")
             return True
         except Exception as e:
-            print(f"[FORCE ERROR] không set được {port}: {e}")
+            print(f"[FORCE ERROR] {port}: {e}")
             return False
 
-    # ===================== INIT PIDOG =====================
+    # ===================== CREATE PIDOG =====================
 
     def create(self) -> Pidog:
-        print("=== PidogBootstrap.create() ===")
-        self.unlock_speaker()
+        if self.cleanup_gpio:
+            self.cleanup_gpio_busy()
 
-        leg_init_angles = self.load_leg_init_angles()
+        self.unlock_robothat_speaker()
 
-        print("Init PiDog...")
-        print("LEG_PINS :", self.leg_pins,  "angles:", leg_init_angles)
-        print("HEAD_PINS:", self.head_pins, "angles:", self.head_init_angles)
-        print("TAIL_PIN :", self.tail_pin,  "angle :", self.tail_init_angle)
+        print("\nInit PiDog (fixed LEG_INIT_ANGLES)...")
+        print("LEG_PINS :", self.LEG_PINS,  "angles:", self.LEG_INIT_ANGLES)
+        print("HEAD_PINS:", self.HEAD_PINS, "angles:", self.HEAD_INIT_ANGLES)
+        print("TAIL_PIN :", self.TAIL_PIN,  "angle :", self.TAIL_INIT_ANGLE)
 
         self.dog = Pidog(
-            leg_pins=self.leg_pins,
-            head_pins=self.head_pins,
-            tail_pin=self.tail_pin,
-            leg_init_angles=leg_init_angles,
-            head_init_angles=self.head_init_angles,
-            tail_init_angle=self.tail_init_angle
+            leg_pins=self.LEG_PINS,
+            head_pins=self.HEAD_PINS,
+            tail_pin=self.TAIL_PIN,
+            leg_init_angles=self.LEG_INIT_ANGLES,
+            head_init_angles=self.HEAD_INIT_ANGLES,
+            tail_init_angle=self.TAIL_INIT_ANGLE
         )
 
         if hasattr(self.dog, "wait_all_done"):
             self.dog.wait_all_done()
 
+        # force head after init
         if self.enable_force_head:
             sleep(0.2)
             self.force_servo_angle(self.force_head_port, self.force_head_angle, hold=0.4)
 
-        print("[DONE] Pidog created.")
+        # stabilize
+        if self.stabilize_sec and self.stabilize_sec > 0:
+            print(f"[STABLE] waiting {self.stabilize_sec:.1f}s for servos to stabilize...")
+            time.sleep(self.stabilize_sec)
+
         return self.dog
