@@ -17,17 +17,16 @@ from robot_hat import Servo
 from matthewpidogclassinit import MatthewPidogBootClass
 
 
-# ====== POSE STANDUP (theo hình bạn gửi) ======
-# P0..P7 legs, P8..P10 head, P11 tail
+# ====== POSE STANDUP (POSE MỚI theo ảnh bạn gửi) ======
 TARGET_POSE = {
-    "P0":  32,   # leg1
-    "P1":  -1,   # leg2
-    "P2": -36,   # leg3
-    "P3":  17,   # leg4
-    "P4":  16,   # leg5
-    "P5":  64,   # leg6
-    "P6":   3,   # leg7
-    "P7": -66,   # leg8
+    "P0":  -4,   # leg 1
+    "P1":  87,   # leg 2
+    "P2":  18,   # leg 3
+    "P3": -90,   # leg 4
+    "P4":  43,   # leg 5
+    "P5": -22,   # leg 6
+    "P6": -29,   # leg 7
+    "P7":  23,   # leg 8
     "P8":  32,   # head yaw
     "P9": -68,   # head roll
     "P10": -90,  # head pitch
@@ -76,8 +75,6 @@ def apply_pose_robot_hat(pose: dict, order=None, step_delay=0.03, settle_sec=1.0
 def main():
     print("=== Sitdown -> Standup (manual pose) ===")
 
-    # 1) init dog bằng class của bạn
-    #    (nếu constructor của bạn có param khác thì dòng try/except sẽ vẫn chạy được)
     try:
         boot = MatthewPidogBootClass(cleanup_gpio=True, kill_python=False, enable_prepose=False)
     except TypeError:
@@ -104,7 +101,7 @@ def main():
         apply_pose_robot_hat(TARGET_POSE, order=APPLY_ORDER, step_delay=0.03, settle_sec=1.0)
 
         dog.rgb_strip.set_mode('breath', 'white', bps=0.6)
-        print("[DONE] Robot đã về standup pose theo góc bạn đưa.")
+        print("[DONE] Robot đã về standup pose theo góc mới.")
 
     except KeyboardInterrupt:
         pass
