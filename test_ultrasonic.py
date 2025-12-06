@@ -1,50 +1,34 @@
-#!/usr/bin/env python3
 from robot_hat import Pin
 import time
 
-# ============================
-#  CHỌN CHÂN TRÊN ROBOT HAT
-# ============================
-TRIG_PIN = 2    # D2  (GPIO02)
-ECHO_PIN = 3    # D3  (GPIO03)
+print("=== SCANNING ALL Robot HAT PINS ===")
 
-trig = Pin(TRIG_PIN, Pin.OUT)
-echo = Pin(ECHO_PIN, Pin.IN)
+# Danh sách pin có thể dùng (tự lấy từ thư viện)
+VALID_PINS = Pin._Pin__pin.values()
 
-def get_distance():
-    # bảo đảm TRIG = LOW trước
-    trig.value(0)
-    time.sleep(0.0002)
+print("Valid Robot HAT Pins:", list(VALID_PINS))
 
-    # phát xung 10 microsecond
-    trig.value(1)
-    time.sleep(0.00001)
-    trig.value(0)
+pins = []
 
-    # chờ echo lên mức HIGH
-    start = time.time()
-    while echo.value() == 0:
-        start = time.time()
+for p in VALID_PINS:
+    try:
+        pins.append((p, Pin(p, Pin.IN)))
+    except:
+        pass
 
-    # chờ echo xuống LOW
-    end = time.time()
-    while echo.value() == 1:
-        end = time.time()
+print("Watching", len(pins), "pins...")
+print("Nhấn Ctrl+C để dừng.\n")
 
-    # tính toán thời gian & khoảng cách
-    duration = end - start
-    distance_cm = (duration * 34300) / 2
-    return distance_cm
-
-
-print("=== TEST ULTRASONIC on PiDog ===")
-print("Nhấn Ctrl+C để dừng.")
+last = {}
 
 try:
     while True:
-        dist = get_distance()
-        print(f"Distance: {dist:.2f} cm")
-        time.sleep(0.2)
+        for p, obj in pins:
+            v = obj.value()
+            if p not in last or last[p] != v:
+                print(f"Pin {p} → {v}")
+                last[p] = v
+        time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("\nStopped.")
+    print("STOP.")
