@@ -36,7 +36,7 @@ CHANNELS = 1
 FORMAT = "S16_LE"      # 16-bit signed little endian
 
 DETECT_CHUNK_SEC = 0.7   # thời gian mỗi "chunk" để dò ngưỡng
-RECORD_SEC = 4.0         # thời gian ghi khi đã trigger
+RECORD_SEC = 5.0         # thời gian ghi khi đã trigger
 
 # Ngưỡng biên độ PCM (0..32767). Cần thử thực tế để chỉnh.
 #  - Nếu kích hoạt hoài thì tăng THRESHOLD.
