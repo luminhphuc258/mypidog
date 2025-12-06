@@ -136,12 +136,99 @@ def convert_mp3_to_wav(mp3_path):
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return wav_path
+import os
+import shutil
+import subprocess
+import wave
+
+CONFIG_PATHS = ["/boot/firmware/config.txt", "/boot/config.txt"]
+
+def _read_boot_config():
+    for p in CONFIG_PATHS:
+        if os.path.exists(p):
+            try:
+                return open(p, "r", errors="ignore").read()
+            except:
+                pass
+    return ""
+
+def detect_spk_en_pin():
+    """
+    SunFounder:
+      - googlevoicehat-soundcard (có mic onboard)  -> SPK_EN = GPIO12
+      - hifiberry-dac (không mic onboard)          -> SPK_EN = GPIO20
+    """
+    txt = _read_boot_config()
+    # lấy dòng dtoverlay không bị comment
+    lines = [ln.split("#", 1)[0].strip() for ln in txt.splitlines()]
+    overlays = [ln for ln in lines if ln.startswith("dtoverlay=")]
+
+    if any("googlevoicehat-soundcard" in ln for ln in overlays):
+        return 12
+    if any("hifiberry-dac" in ln for ln in overlays):
+        return 20
+
+    # fallback: nhìn aplay -l có card googlevoicehat không
+    try:
+        out = subprocess.run(["aplay", "-l"], capture_output=True, text=True).stdout.lower()
+        if "googlevoi" in out or "googlevoicehat" in out:
+            return 12
+    except:
+        pass
+
+    # fallback cuối: đa số robothat không mic -> 20
+    return 20
+
+def set_gpio_high(pin):
+    """
+    Bật SPK_EN lên HIGH. Cần quyền root (chạy script bằng sudo).
+    """
+    if shutil.which("pinctrl"):
+        subprocess.run(["pinctrl", "set", str(pin), "op", "dh"], check=False)
+        return True
+
+    if shutil.which("raspi-gpio"):
+        subprocess.run(["raspi-gpio", "set", str(pin), "op", "dh"], check=False)
+        return True
+
+    return False
+
+def prime_speaker_aplay(device):
+    """
+    Phát 0.1s silence để 'prime' đường audio (giống play -n trim 0 0.5).
+    """
+    silence = "/tmp/robothat_silence.wav"
+    if not os.path.exists(silence):
+        with wave.open(silence, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)     # 16-bit
+            wf.setframerate(16000)
+            wf.writeframes(b"\x00\x00" * (16000 // 10))  # 0.1s
+    subprocess.run(["aplay", "-D", device, "-q", silence], check=False)
+
+def unlock_robothat_speaker(speaker_device):
+    pin = detect_spk_en_pin()
+    ok = set_gpio_high(pin)
+
+    if not ok:
+        print("[WARN] Không tìm thấy pinctrl/raspi-gpio hoặc không đủ quyền. Hãy chạy bằng sudo.")
+        return False
+
+    # prime để chắc chắn “mở khóa”
+    prime_speaker_aplay(speaker_device)
+
+    # (tuỳ chọn) set volume max nếu control tồn tại
+    subprocess.run(["amixer", "sset", "robot-hat speaker", "100%"], check=False)
+
+    print(f"[OK] Speaker unlocked (SPK_EN GPIO{pin})")
+    return True
 
 
 
 # ================== MAIN LOOP ==================
 
 def main_loop():
+    unlock_robothat_speaker(SPEAKER_DEVICE)
     print("\n=== Matthew Robot — Auto Listening ===")
     print(f"Mic: {MIC_DEVICE}")
     print(f"Speaker: {SPEAKER_DEVICE}")
