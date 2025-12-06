@@ -1,32 +1,56 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import time
-from gpiozero import DigitalInputDevice
+"""
+Test dual touch sensor trên Robot HAT.
 
-# D2 -> GPIO27, D3 -> GPIO22
-LEFT_PIN = 27   # dây xanh lá (S1)
-RIGHT_PIN = 22  # dây vàng (S2)
+- Lấy tín hiệu từ cổng D2 (LEFT) và D3 (RIGHT).
+- In giá trị đọc được ra màn hình liên tục.
 
-# Dual touch của SunFounder thường là "active-low"
-# nên mình bật pull_up=True, rồi sẽ tự đảo giá trị sau
-left_touch = DigitalInputDevice(LEFT_PIN, pull_up=True)
-right_touch = DigitalInputDevice(RIGHT_PIN, pull_up=True)
+Mặc định:
+    0 = không chạm
+    1 = đang chạm
 
-print("=== RAW DUAL TOUCH TEST ===")
-print("Chạm lần lượt vào 2 cảm biến trên đầu.")
-print("Nhấn Ctrl+C để dừng.\n")
-print("Format:  L=0/1  R=0/1  (1 = đang chạm, 0 = không chạm)\n")
+Nếu thực tế bị ngược (chạm mà in 0, không chạm mà in 1)
+thì sửa biến INVERT_LOGIC = True ở dưới.
+"""
 
-try:
-    while True:
-        # gpiozero trả .value = 1 khi mức logic HIGH (không chạm, vì pull-up)
-        # dual touch thường kéo xuống LOW khi chạm -> mình đảo lại cho dễ hiểu
-        L = 1 - int(left_touch.value)
-        R = 1 - int(right_touch.value)
+from time import sleep
+from robot_hat import Pin
 
-        print(f"L={L}  R={R}", end="\r")
-        time.sleep(0.05)
+# Nếu chạm mà giá trị in ra bị ngược, chuyển thành True
+INVERT_LOGIC = False   # để test trước, nếu cần thì đổi thành True
 
-except KeyboardInterrupt:
-    print("\n[EXIT] Dừng test dual touch.")
+def read_touch(pin: Pin) -> int:
+    """Đọc digital rồi áp dụng đảo logic nếu cần."""
+    raw = pin.read_digital()   # 0 hoặc 1
+    if INVERT_LOGIC:
+        return 0 if raw else 1
+    return raw
+
+def main():
+    print("=== RAW DUAL TOUCH TEST (Robot HAT) ===")
+    print("Đang dùng:")
+    print("  - LEFT  : D2")
+    print("  - RIGHT : D3")
+    print("Format:  L=0/1  R=0/1   (0 = không chạm, 1 = đang chạm)")
+    print("Nhấn Ctrl+C để dừng.\n")
+
+    # Tạo đối tượng Pin từ Robot HAT
+    touch_L = Pin("D2")
+    touch_R = Pin("D3")
+
+    try:
+        while True:
+            val_L = read_touch(touch_L)
+            val_R = read_touch(touch_R)
+
+            # In trên một dòng cho dễ nhìn
+            print(f"\rL={val_L}   R={val_R}   ", end="", flush=True)
+            sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("\n[EXIT] Dừng test dual touch.")
+
+if __name__ == "__main__":
+    main()
