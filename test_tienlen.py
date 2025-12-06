@@ -23,7 +23,6 @@ LEG_PINS  = [0, 1, 2, 3, 4, 5, 6, 7]
 HEAD_PINS = [8, 9, 10]   # [NECK_PITCH, NECK_TILT, HEAD_YAW]
 TAIL_PIN  = [11]
 
-# giữ nguyên theo bạn
 HEAD_INIT_ANGLES = [20, -45, -90]
 TAIL_INIT_ANGLE  = [30]  # MUST be list
 
@@ -36,33 +35,19 @@ CONFIG_PATHS = ["/boot/firmware/config.txt", "/boot/config.txt"]
 # ===================== GPIO CLEANUP (FIX GPIO BUSY) =====================
 
 def cleanup_gpio_busy(kill_python=False):
-    """
-    Kill tiến trình đang giữ /dev/gpiochip* /dev/gpiomem /dev/mem
-    -> fix lgpio/gpiozero: GPIO busy
-    """
     print("[CLEAN] Free GPIO devices...")
     subprocess.run(
         ["bash", "-lc", "sudo fuser -k /dev/gpiochip* /dev/gpiomem /dev/mem 2>/dev/null || true"],
         check=False
     )
-
-    # optional: mạnh tay, chỉ bật khi bạn muốn kill hết python cũ
     if kill_python:
         subprocess.run(["bash", "-lc", "sudo killall -q python3 python || true"], check=False)
-
-    # nghỉ chút cho kernel release
     time.sleep(0.2)
 
 
-# ===================== POSE LOADER (P0..P7) =====================
+# ===================== POSE LOADER =====================
 
 def load_channels_from_pose_file(path: Path) -> dict[int, float]:
-    """
-    Đọc pose file, trả về dict {channel:int -> angle:float}
-    Hỗ trợ:
-      - JSON: {"P0": -3, "P1": 89, ...} hoặc {"0": -3, ...}
-      - Text: P0: -3 / P1 = 89 / P2 -10 ...
-    """
     txt = path.read_text(encoding="utf-8", errors="ignore").strip()
 
     # JSON first
@@ -84,13 +69,11 @@ def load_channels_from_pose_file(path: Path) -> dict[int, float]:
         if not line or line.startswith("#") or line.startswith("//"):
             continue
 
-        # P0: -3 or P1 = 89
         m = re.search(r"[Pp]\s*(\d+)\s*[:=]\s*(-?\d+(?:\.\d+)?)", line)
         if m:
             out[int(m.group(1))] = float(m.group(2))
             continue
 
-        # fallback "0 -3"
         nums = re.findall(r"-?\d+(?:\.\d+)?", line)
         if len(nums) >= 2:
             ch = int(float(nums[0]))
@@ -101,9 +84,6 @@ def load_channels_from_pose_file(path: Path) -> dict[int, float]:
 
 
 def load_leg_init_angles_or_fallback(fallback):
-    """
-    Chỉ load P0..P7 để thay LEG_INIT_ANGLES.
-    """
     if not POSE_FILE.exists():
         print(f"[WARN] Pose file not found: {POSE_FILE} -> use fallback legs.")
         return fallback
@@ -117,6 +97,46 @@ def load_leg_init_angles_or_fallback(fallback):
     angles = [pose[i] for i in range(8)]
     print(f"[OK] LEG_INIT_ANGLES from file: {angles}")
     return angles
+
+
+def apply_pose_from_file(path: Path, step_delay=0.02, settle_sec=0.8):
+    """
+    Đưa robot về pose trong file bằng robot_hat.Servo (không dùng pidog action).
+    Thứ tự: legs -> head -> tail để ít té.
+    """
+    if not path.exists():
+        print(f"[WARN] Pose file not found: {path}")
+        return False
+
+    pose = load_channels_from_pose_file(path)
+    if not pose:
+        print(f"[WARN] Pose file parse fail/empty: {path}")
+        return False
+
+    def clamp(a: float) -> float:
+        if a < -90: return -90
+        if a > 90:  return 90
+        return a
+
+    order = list(range(0, 8)) + [8, 9, 10] + [11]
+    print(f"[POSE] Return to init pose from file: {path.name}")
+
+    for ch in order:
+        if ch not in pose:
+            continue
+        ang = clamp(float(pose[ch]))
+        port = f"P{ch}"
+        try:
+            Servo(port).angle(ang)
+            sleep(step_delay)
+        except Exception as e:
+            print(f"[POSE WARN] {port} -> {ang} failed: {e}")
+
+    if settle_sec and settle_sec > 0:
+        print(f"[POSE] settle {settle_sec:.1f}s...")
+        time.sleep(settle_sec)
+
+    return True
 
 
 # ===================== AUDIO UNLOCK (SPK_EN) =====================
@@ -207,21 +227,13 @@ def force_servo_angle(port: str, angle: float, hold=0.3):
 # ===================== MAIN DEMO =====================
 
 def main():
-    # 0) free GPIO (fix GPIO busy)
     cleanup_gpio_busy(kill_python=False)
-
-    # 1) unlock speaker
     unlock_robothat_speaker(SPEAKER_DEVICE)
 
-    # 2) load legs from file to replace fixed array
     LEG_INIT_ANGLES_FALLBACK = [-3, 89, 9, -80, 3, 90, 10, -90]
     leg_init_angles = load_leg_init_angles_or_fallback(LEG_INIT_ANGLES_FALLBACK)
 
     print("\nInit PiDog...")
-    print("LEG_PINS :", LEG_PINS,  "angles:", leg_init_angles)
-    print("HEAD_PINS:", HEAD_PINS, "angles:", HEAD_INIT_ANGLES)
-    print("TAIL_PIN :", TAIL_PIN,  "angle :", TAIL_INIT_ANGLE)
-
     my_dog = Pidog(
         leg_pins=LEG_PINS,
         head_pins=HEAD_PINS,
@@ -234,15 +246,12 @@ def main():
     if hasattr(my_dog, "wait_all_done"):
         my_dog.wait_all_done()
 
-    # 3) force head after init
     sleep(0.2)
     force_servo_angle(FORCE_HEAD_PORT, FORCE_HEAD_ANGLE, hold=0.4)
 
-    # 4) stabilize 1s to avoid falling
     print("[STABLE] waiting 1.0s for servos to stabilize...")
     time.sleep(1.0)
 
-    # 5) demo fast walk + fast turns + sit
     try:
         my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
         my_dog.do_action('stand', speed=95)
@@ -254,19 +263,16 @@ def main():
         my_dog.wait_all_done()
         time.sleep(0.1)
 
+        # ✅ kết thúc turn_left là trả về pose file config
         my_dog.rgb_strip.set_mode('boom', 'yellow', bps=3)
         my_dog.do_action('turn_left', step_count=5, speed=99)
         my_dog.wait_all_done()
         time.sleep(0.05)
 
-        my_dog.rgb_strip.set_mode('boom', 'blue', bps=3)
-        my_dog.do_action('turn_right', step_count=5, speed=99)
-        my_dog.wait_all_done()
-        time.sleep(0.05)
-
-        my_dog.rgb_strip.set_mode('breath', 'red', bps=0.8)
-        my_dog.do_action('sit', speed=90)
-        my_dog.wait_all_done()
+        # ✅ Return to init pose from file (NO sit)
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.6)
+        my_dog.body_stop()
+        apply_pose_from_file(POSE_FILE, step_delay=0.02, settle_sec=1.0)
 
     except KeyboardInterrupt:
         pass
