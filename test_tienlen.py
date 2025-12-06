@@ -11,6 +11,7 @@ from pathlib import Path
 from time import sleep
 
 from pidog import Pidog
+from pidog.preset_actions import push_up
 from robot_hat import Servo
 
 
@@ -97,46 +98,6 @@ def load_leg_init_angles_or_fallback(fallback):
     angles = [pose[i] for i in range(8)]
     print(f"[OK] LEG_INIT_ANGLES from file: {angles}")
     return angles
-
-
-def apply_pose_from_file(path: Path, step_delay=0.02, settle_sec=0.8):
-    """
-    Đưa robot về pose trong file bằng robot_hat.Servo (không dùng pidog action).
-    Thứ tự: legs -> head -> tail để ít té.
-    """
-    if not path.exists():
-        print(f"[WARN] Pose file not found: {path}")
-        return False
-
-    pose = load_channels_from_pose_file(path)
-    if not pose:
-        print(f"[WARN] Pose file parse fail/empty: {path}")
-        return False
-
-    def clamp(a: float) -> float:
-        if a < -90: return -90
-        if a > 90:  return 90
-        return a
-
-    order = list(range(0, 8)) + [8, 9, 10] + [11]
-    print(f"[POSE] Return to init pose from file: {path.name}")
-
-    for ch in order:
-        if ch not in pose:
-            continue
-        ang = clamp(float(pose[ch]))
-        port = f"P{ch}"
-        try:
-            Servo(port).angle(ang)
-            sleep(step_delay)
-        except Exception as e:
-            print(f"[POSE WARN] {port} -> {ang} failed: {e}")
-
-    if settle_sec and settle_sec > 0:
-        print(f"[POSE] settle {settle_sec:.1f}s...")
-        time.sleep(settle_sec)
-
-    return True
 
 
 # ===================== AUDIO UNLOCK (SPK_EN) =====================
@@ -253,26 +214,60 @@ def main():
     time.sleep(1.0)
 
     try:
+        # --- start stand ---
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
+        my_dog.do_action('stand', speed=95)
+        my_dog.wait_all_done()
+        time.sleep(0.25)
+
+        # --- forward ---
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.7)
+        my_dog.do_action('forward', step_count=6, speed=99)
+        my_dog.wait_all_done()
+        time.sleep(0.15)
+
+        # --- turn right ---
+        my_dog.rgb_strip.set_mode('boom', 'blue', bps=3)
+        my_dog.do_action('turn_right', step_count=5, speed=99)
+        my_dog.wait_all_done()
+        time.sleep(0.15)
+
+        # ✅ after turn_right: sit -> stand -> push_up -> backward -> stand -> stop -> stand(end)
+        my_dog.rgb_strip.set_mode('breath', 'yellow', bps=0.8)
+        my_dog.do_action('sit', speed=90)
+        my_dog.wait_all_done()
+        time.sleep(0.4)
+
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
+        my_dog.do_action('stand', speed=92)
+        my_dog.wait_all_done()
+        time.sleep(0.3)
+
+        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=2)
+        push_up(my_dog, speed=92)
+        my_dog.wait_all_done()
+        time.sleep(0.35)
+
+        my_dog.rgb_strip.set_mode('breath', 'red', bps=0.9)
+        my_dog.do_action('backward', step_count=4, speed=99)
+        my_dog.wait_all_done()
+        time.sleep(0.2)
+
         my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
         my_dog.do_action('stand', speed=95)
         my_dog.wait_all_done()
         time.sleep(0.2)
 
-        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.7)
-        my_dog.do_action('forward', step_count=6, speed=99)
-        my_dog.wait_all_done()
-        time.sleep(0.1)
+        # stop body + ensure final pose is stand
+        if hasattr(my_dog, "body_stop"):
+            my_dog.body_stop()
+        time.sleep(0.2)
 
-        # ✅ kết thúc turn_left là trả về pose file config
-        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=3)
-        my_dog.do_action('turn_left', step_count=5, speed=99)
+        my_dog.do_action('stand', speed=95)
         my_dog.wait_all_done()
-        time.sleep(0.05)
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.5)
 
-        # ✅ Return to init pose from file (NO sit)
-        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.6)
-        my_dog.body_stop()
-        apply_pose_from_file(POSE_FILE, step_delay=0.02, settle_sec=1.0)
+        print("[DONE] Final pose = STAND")
 
     except KeyboardInterrupt:
         pass
