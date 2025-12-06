@@ -1,21 +1,30 @@
 import RPi.GPIO as GPIO
-from time import sleep
+import time
 
+# CÁC GPIO KHẢ DỤNG TRÊN ROBOT SHIELD
+gpio_list = [2, 3, 4, 17, 22, 27]
+
+# CONFIG
 GPIO.setmode(GPIO.BCM)
 
-PIN_LEFT  = 27   # OUT1
-PIN_RIGHT = 22   # OUT2
+for pin in gpio_list:
+    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-GPIO.setup(PIN_LEFT, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-GPIO.setup(PIN_RIGHT, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+print("=== GPIO AUTO SCAN ===")
+print("Đang theo dõi các chân:", gpio_list)
+print("Hãy chạm cảm biến → xem chân nào thay đổi!")
 
-print("=== TOUCH TEST PUD_DOWN ===")
+prev_state = {pin: GPIO.input(pin) for pin in gpio_list}
 
 try:
     while True:
-        L = GPIO.input(PIN_LEFT)
-        R = GPIO.input(PIN_RIGHT)
-        print(f"L={L}  R={R}")
-        sleep(0.1)
+        for pin in gpio_list:
+            val = GPIO.input(pin)
+            if val != prev_state[pin]:
+                print(f"[CHANGE] GPIO {pin}: {prev_state[pin]} → {val}")
+                prev_state[pin] = val
+        time.sleep(0.05)
+
 except KeyboardInterrupt:
+    print("\n[EXIT] Dừng quét GPIO.")
     GPIO.cleanup()
