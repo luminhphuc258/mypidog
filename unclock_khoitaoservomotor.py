@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-- Unlock Robot-HAT/PiDog speaker via SPK_EN GPIO (như i2samp.sh)
-- Init Pidog theo pose lấy từ file pidog_pose_config.txt
-- Sau init: ép xoay head servo (bypass pidog) về -90 bằng robot_hat.Servo
+- Unlock Robot-HAT/PiDog speaker via SPK_EN GPIO
+- Load pose từ pidog_pose_config.txt (format như servo editor: P0..P11)
+- Remap head: file(P8 yaw, P9 roll, P10 pitch) -> pidog(P8 pitch, P9 tilt, P10 yaw)
+- Init Pidog bằng init_angles đã remap
+- Giữ nguyên: force head servo sau init (bypass pidog limit)
 """
 
 import os
@@ -19,25 +21,34 @@ from pidog import Pidog
 from robot_hat import Servo
 
 
-# ===================== POSE FILE =====================
+# ===================== CONFIG =====================
 
+SPEAKER_DEVICE = "plughw:3,0"
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 
-# Mapping pin bạn đã dùng (P0..P11)
+# Pidog pins (theo mapping bạn đã confirm)
 LEG_PINS  = [0, 1, 2, 3, 4, 5, 6, 7]
-HEAD_PINS = [8, 9, 10]   # [NECK_PITCH, NECK_TILT, HEAD_YAW]
+HEAD_PINS = [8, 9, 10]   # P8=NECK_PITCH, P9=NECK_TILT, P10=HEAD_YAW
 TAIL_PIN  = [11]
 
-def load_pose_angles(path: Path) -> dict[int, float]:
+# Force head sau init (giữ nguyên như bạn muốn)
+FORCE_HEAD_PORT  = "P10"
+FORCE_HEAD_ANGLE = -90
+
+
+# ===================== POSE LOADER (FILE FORMAT = SERVO EDITOR) =====================
+
+def load_pose_angles_robot_hat_style(path: Path) -> dict[int, float]:
     """
-    Đọc pose file -> dict {0..11: angle}.
+    Đọc pose file kiểu servo editor: P0..P11.
     Hỗ trợ:
-      - JSON: {"P0": -3, "P1": 89, ...} hoặc {"0": -3, ...}
-      - Text: P0: -3  /  P1 = 89  /  0 -3
+      - JSON: {"P0": -3, "P1": 89, ...}
+      - Text: P0 : -3   /  P1=89  /  P10  -90
+    Trả về dict {0..11: angle}
     """
     txt = path.read_text(encoding="utf-8", errors="ignore").strip()
 
-    # thử JSON trước
+    # thử JSON
     try:
         obj = json.loads(txt)
         out = {}
@@ -49,43 +60,54 @@ def load_pose_angles(path: Path) -> dict[int, float]:
     except Exception:
         pass
 
-    # parse text
     out = {}
     for line in txt.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("//"):
             continue
 
-        # bắt kiểu "P0: -3" hoặc "P0 = -3"
-        m = re.match(r"^[Pp]\s*(\d+)\s*[:=]\s*(-?\d+(?:\.\d+)?)", line)
+        # match "P0 : -3" / "P1=89" / "P10  -90"
+        m = re.search(r"[Pp]\s*(\d+)\s*[:=]?\s*(-?\d+(?:\.\d+)?)", line)
         if m:
-            out[int(m.group(1))] = float(m.group(2))
+            ch = int(m.group(1))
+            ang = float(m.group(2))
+            out[ch] = ang
             continue
-
-        # bắt kiểu "0 -3" hoặc "0, -3"
-        nums = re.findall(r"-?\d+(?:\.\d+)?", line)
-        if len(nums) >= 2:
-            pin = int(float(nums[0]))
-            ang = float(nums[1])
-            out[pin] = ang
 
     return out
 
-def build_init_arrays(pose: dict[int, float]):
-    # thiếu key nào thì báo rõ
-    missing = [p for p in (LEG_PINS + HEAD_PINS + TAIL_PIN) if p not in pose]
-    if missing:
-        raise ValueError(f"Pose file thiếu các kênh: {missing}")
 
-    leg_init  = [pose[p] for p in LEG_PINS]
-    head_init = [pose[p] for p in HEAD_PINS]
-    tail_init = [pose[TAIL_PIN[0]]]   # tail MUST be list
+def build_pidog_init_angles_from_posefile(pose: dict[int, float]):
+    """
+    pose: theo robot_hat file (P8=yaw, P9=roll, P10=pitch)
+    pidog wants:
+      - legs: P0..P7 giữ nguyên
+      - head: P8=pitch, P9=tilt, P10=yaw  (REMAPPED!)
+      - tail: P11 giữ nguyên (nhưng phải là list)
+    """
+    need = list(range(12))
+    missing = [i for i in need if i not in pose]
+    if missing:
+        raise ValueError(f"Pose file thiếu channel: {missing} (cần đủ P0..P11)")
+
+    leg_init = [pose[p] for p in LEG_PINS]
+
+    # REMAP HEAD:
+    # file: P8 yaw, P9 roll, P10 pitch
+    # pidog: P8 pitch, P9 tilt, P10 yaw
+    head_pitch = pose[10]   # file P10 -> pidog P8
+    head_tilt  = pose[9]    # file P9  -> pidog P9
+    head_yaw   = pose[8]    # file P8  -> pidog P10
+
+    head_init = [head_pitch, head_tilt, head_yaw]
+
+    tail_init = [pose[11]]  # MUST be list
+
     return leg_init, head_init, tail_init
 
 
 # ===================== AUDIO UNLOCK (SPK_EN) =====================
 
-SPEAKER_DEVICE = "plughw:3,0"
 CONFIG_PATHS = ["/boot/firmware/config.txt", "/boot/config.txt"]
 
 def _read_boot_config():
@@ -133,7 +155,7 @@ def prime_speaker(device: str):
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(16000)
-            wf.writeframes(b"\x00\x00" * (16000 // 10))  # 0.1s
+            wf.writeframes(b"\x00\x00" * (16000 // 10))
     subprocess.run(["aplay", "-D", device, "-q", silence], check=False)
 
 def unlock_robothat_speaker(device: str):
@@ -151,11 +173,7 @@ def unlock_robothat_speaker(device: str):
     return True
 
 
-# ===================== FORCE HEAD SERVO AFTER INIT =====================
-
-# Bạn muốn ép “head index 3” về -90 (thường là HEAD_YAW = P10)
-FORCE_HEAD_PORT  = "P10"
-FORCE_HEAD_ANGLE = -90
+# ===================== FORCE SERVO (BYPASS PIDOG) =====================
 
 def force_servo_angle(port: str, angle: float, hold=0.3):
     if angle < -90: angle = -90
@@ -174,20 +192,19 @@ def force_servo_angle(port: str, angle: float, hold=0.3):
 # ===================== MAIN =====================
 
 def main():
-    print("=== Unlock speaker + Init PiDog from pose file ===")
-    print(f"Speaker device: {SPEAKER_DEVICE}")
+    print("=== Unlock speaker + Init Pidog from pose file (with remap) ===")
     unlock_robothat_speaker(SPEAKER_DEVICE)
 
     if not POSE_FILE.exists():
         raise FileNotFoundError(f"Không thấy file pose: {POSE_FILE}")
 
-    pose = load_pose_angles(POSE_FILE)
-    leg_init, head_init, tail_init = build_init_arrays(pose)
+    pose = load_pose_angles_robot_hat_style(POSE_FILE)
+    leg_init, head_init, tail_init = build_pidog_init_angles_from_posefile(pose)
 
-    print("\nInit PiDog using pose from:", POSE_FILE)
-    print("LEG_PINS :", LEG_PINS,  "angles:", leg_init)
-    print("HEAD_PINS:", HEAD_PINS, "angles:", head_init)
-    print("TAIL_PIN :", TAIL_PIN,  "angle :", tail_init)
+    print("\nPose file:", POSE_FILE)
+    print("LEG_INIT :", leg_init)
+    print("HEAD_INIT (pidog order pitch,tilt,yaw):", head_init, "  (remap from file P10,P9,P8)")
+    print("TAIL_INIT:", tail_init)
 
     dog = Pidog(
         leg_pins=LEG_PINS,
@@ -201,12 +218,11 @@ def main():
     if hasattr(dog, "wait_all_done"):
         dog.wait_all_done()
 
-    # giữ nguyên logic force sau init (nếu bạn cần)
+    # giữ nguyên: force head yaw sau init nếu cần
     sleep(0.2)
     force_servo_angle(FORCE_HEAD_PORT, FORCE_HEAD_ANGLE, hold=0.4)
 
-    print("\n[DONE] Init theo pose_file xong + force head nếu cần.")
-
+    print("\n[DONE] Init theo file + remap xong.")
 
 if __name__ == "__main__":
     main()
