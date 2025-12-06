@@ -23,11 +23,13 @@ POSE_FROM_IMAGE = {
 # Thứ tự set để đỡ té: head/tail -> rear -> front
 ORDER_SAFE = ["P8","P9","P10","P11","P4","P5","P6","P7","P0","P1","P2","P3"]
 
+# ===== KHÓA CHÂN TRỤ KHI A->B =====
+LOCK_PORTS_A_TO_B = {"P0", "P1", "P2", "P3"}
 
 # ===== TUNE SPEED Ở ĐÂY =====
-MOVE_STEPS   = 25     # càng nhiều càng mượt (15~35)
-FRAME_DELAY  = 0.03   # mỗi frame nghỉ bao lâu (0.02~0.06)
-SETTLE_SEC   = 1.0    # nghỉ sau khi xong 1 pose
+MOVE_STEPS   = 25
+FRAME_DELAY  = 0.03
+SETTLE_SEC   = 1.0
 
 
 def clamp(a: float) -> float:
@@ -40,54 +42,64 @@ def lerp(a, b, t):
     return a + (b - a) * t
 
 
-def smooth_pose_transition(servos: dict, current: dict, target: dict, order, steps=MOVE_STEPS, frame_delay=FRAME_DELAY):
-    # đi theo nhiều bước nhỏ để không giật
-    for i in range(1, steps + 1):
-        t = i / steps
-        for port in order:
-            if port not in target:
+class SmoothPoseRunner:
+    def __init__(self, order):
+        self.order = order
+        self.servos = {p: Servo(p) for p in order}
+        # lưu “góc hiện tại” nội bộ (không đọc từ hardware)
+        self.current = {p: 0.0 for p in order}
+
+    def go_to(self, target: dict, steps=MOVE_STEPS, frame_delay=FRAME_DELAY, settle_sec=SETTLE_SEC,
+              freeze_ports=None):
+        """
+        freeze_ports: set các port không được di chuyển trong lần transition này
+        """
+        freeze_ports = set(freeze_ports or [])
+
+        for i in range(1, steps + 1):
+            t = i / steps
+            for port in self.order:
+                if port in freeze_ports:
+                    continue
+                if port not in target:
+                    continue
+
+                a0 = self.current.get(port, 0.0)
+                a1 = float(target[port])
+                ang = clamp(lerp(a0, a1, t))
+                self.servos[port].angle(ang)
+
+            sleep(frame_delay)
+
+        # update current (trừ ports bị freeze thì giữ nguyên)
+        for port in self.order:
+            if port in freeze_ports:
                 continue
-            a0 = current.get(port, 0.0)
-            a1 = target[port]
-            ang = clamp(lerp(a0, a1, t))
-            servos[port].angle(ang)
-        sleep(frame_delay)
+            if port in target:
+                self.current[port] = float(target[port])
 
-
-def apply_pose_smooth(target_pose: dict, order=ORDER_SAFE, settle_sec=SETTLE_SEC):
-    # tạo servo 1 lần
-    servos = {p: Servo(p) for p in order}
-
-    # giả sử current = góc cuối lần trước (nếu chưa có thì dùng 0)
-    # -> ở lần đầu, current sẽ là 0, nhưng ta vẫn đi mượt về target
-    if not hasattr(apply_pose_smooth, "_current"):
-        apply_pose_smooth._current = {p: 0.0 for p in servos.keys()}
-
-    current = apply_pose_smooth._current
-
-    # smooth transition
-    smooth_pose_transition(servos, current, target_pose, order)
-
-    # cập nhật “current”
-    for p in order:
-        if p in target_pose:
-            current[p] = float(target_pose[p])
-
-    print(f"[STABLE] settle {settle_sec:.1f}s ...")
-    time.sleep(settle_sec)
+        if settle_sec and settle_sec > 0:
+            print(f"[STABLE] settle {settle_sec:.1f}s ...")
+            time.sleep(settle_sec)
 
 
 def main():
-    print("=== robot_hat ONLY: PREPOSE -> delay -> POSE_FROM_IMAGE (SLOW/MOOTH) ===")
+    print("=== robot_hat ONLY: PREPOSE -> delay -> POSE_FROM_IMAGE (freeze P0-P3 on A->B) ===")
 
-    print("[1] PREPOSE (smooth)...")
-    apply_pose_smooth(PREPOSE, ORDER_SAFE, settle_sec=1.0)
+    runner = SmoothPoseRunner(ORDER_SAFE)
 
+    # Step 1: về pose A bình thường (cho phép move hết để vào đúng trạng thái prepose)
+    print("[1] PREPOSE (smooth, move ALL)...")
+    runner.go_to(PREPOSE, steps=MOVE_STEPS, frame_delay=FRAME_DELAY, settle_sec=1.0, freeze_ports=None)
+
+    # Step 2: delay 1s
     print("[2] Delay 1s ...")
     time.sleep(1.0)
 
-    print("[3] POSE_FROM_IMAGE (smooth)...")
-    apply_pose_smooth(POSE_FROM_IMAGE, ORDER_SAFE, settle_sec=1.0)
+    # Step 3: A -> B nhưng KHÓA P0,P1,P2,P3
+    print("[3] A -> B (smooth, FREEZE P0-P3)...")
+    runner.go_to(POSE_FROM_IMAGE, steps=MOVE_STEPS, frame_delay=FRAME_DELAY,
+                 settle_sec=1.0, freeze_ports=LOCK_PORTS_A_TO_B)
 
     print("[DONE] Finished (no pidog).")
 
