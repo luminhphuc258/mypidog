@@ -15,6 +15,9 @@ def main():
 
     my_dog = boot.create()
 
+    # ✅ cho servo ổn định để robot không té
+    time.sleep(1.0)
+
     try:
         # 1) Stand nhanh
         my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
@@ -28,7 +31,7 @@ def main():
         my_dog.wait_all_done()
         time.sleep(0.1)
 
-        # 3) Turn LEFT nhanh (tăng speed + giảm step_count)
+        # 3) Turn LEFT nhanh
         my_dog.rgb_strip.set_mode('boom', 'yellow', bps=3)
         my_dog.do_action('turn_left', step_count=5, speed=99)
         my_dog.wait_all_done()
@@ -40,7 +43,7 @@ def main():
         my_dog.wait_all_done()
         time.sleep(0.05)
 
-        # 5) Sit nhanh
+        # 5) Sit
         my_dog.rgb_strip.set_mode('breath', 'red', bps=0.8)
         my_dog.do_action('sit', speed=90)
         my_dog.wait_all_done()
