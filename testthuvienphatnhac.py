@@ -1,5 +1,5 @@
-from robot_hat import Audio
-import time
+from pidog.audio import Audio
+from time import sleep
 
 audio = Audio()          # KHỞI TẠO I2S AUDIO DRIVER
 audio.play('testmic.wav')
