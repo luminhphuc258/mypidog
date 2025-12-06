@@ -1,36 +1,22 @@
-from robot_hat import Pin
+from pidog import Pidog
 import time
 
-# Danh sách pin INPUT dựa theo Robot HAT SunFounder
-VALID_PINS = [2, 3, 4, 5, 6, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+dog = Pidog()
 
-print("=== MANUAL PIN SCAN FOR ROBOT HAT ===")
-print("Watching pins:", VALID_PINS)
-print("Chạm cảm biến → xem pin nào thay đổi.\n")
-
-pins = []
-
-# Khởi tạo Pin objects
-for p in VALID_PINS:
-    try:
-        obj = Pin(p, Pin.IN)
-        pins.append((p, obj))
-    except Exception as e:
-        print(f"Pin {p} cannot init: {e}")
-
-last = {}
+print("=== TEST Pidog Touch SENSOR ===")
+print("Nhấn vào đầu robot để test...\n")
 
 try:
     while True:
-        for p, obj in pins:
-            try:
-                val = obj.value()
-                if last.get(p) != val:
-                    print(f"Pin {p} = {val}")
-                    last[p] = val
-            except:
-                pass
+        val = dog.touch.read()   # trả về: 0 = không chạm, 1 = trái, 2 = phải, 3 = cả hai
+        if val != 0:
+            if val == 1:
+                print("LEFT touched!")
+            elif val == 2:
+                print("RIGHT touched!")
+            elif val == 3:
+                print("BOTH touched!")
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("\nSTOP.")
+    print("STOP.")
