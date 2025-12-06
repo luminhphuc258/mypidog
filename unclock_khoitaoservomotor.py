@@ -4,93 +4,15 @@
 """
 - Unlock Robot-HAT/PiDog speaker via SPK_EN GPIO (như i2samp.sh)
 - Init Pidog theo pose bạn set
-- Chỉ thay LEG_INIT_ANGLES bằng giá trị lấy từ pidog_pose_config.txt (P0..P7)
-- Các phần còn lại giữ nguyên
 - Sau init: ép xoay head servo (bypass giới hạn pidog) về -90 bằng robot_hat.Servo
 """
 
 import os
-import re
-import json
 import shutil
 import subprocess
 from time import sleep
-from pathlib import Path
-
 from pidog import Pidog
 from robot_hat import Servo
-
-# ===================== LOAD LEG POSE FROM FILE =====================
-
-POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
-
-def load_channels_from_pose_file(path: Path) -> dict[int, float]:
-    """
-    Đọc file pose, trả về dict {channel:int -> angle:float}
-    Hỗ trợ format:
-      - JSON: {"P0": -3, "P1": 89, ...} hoặc {"0": -3, ...}
-      - Text: P0: -3 / P1 = 89 / P2 -10 ...
-    """
-    txt = path.read_text(encoding="utf-8", errors="ignore").strip()
-
-    # Try JSON first
-    try:
-        obj = json.loads(txt)
-        out = {}
-        for k, v in obj.items():
-            m = re.search(r"(\d+)", str(k))
-            if m:
-                out[int(m.group(1))] = float(v)
-        return out
-    except Exception:
-        pass
-
-    # Parse text lines
-    out = {}
-    for line in txt.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("//"):
-            continue
-
-        # match like "P0: -3" or "P1 = 89"
-        m = re.search(r"[Pp]\s*(\d+)\s*[:=]\s*(-?\d+(?:\.\d+)?)", line)
-        if m:
-            out[int(m.group(1))] = float(m.group(2))
-            continue
-
-        # match like "0 -3"
-        nums = re.findall(r"-?\d+(?:\.\d+)?", line)
-        if len(nums) >= 2:
-            ch = int(float(nums[0]))
-            ang = float(nums[1])
-            out[ch] = ang
-
-    return out
-
-def load_leg_init_angles_or_fallback(fallback_list):
-    """
-    Chỉ lấy P0..P7 từ pose file để thay LEG_INIT_ANGLES.
-    Nếu file thiếu / parse fail -> dùng fallback_list.
-    """
-    try:
-        if not POSE_FILE.exists():
-            print(f"[WARN] Không thấy {POSE_FILE}, dùng LEG_INIT_ANGLES mặc định.")
-            return fallback_list
-
-        pose = load_channels_from_pose_file(POSE_FILE)
-        missing = [i for i in range(8) if i not in pose]
-        if missing:
-            print(f"[WARN] Pose file thiếu {missing} (P0..P7). Dùng LEG_INIT_ANGLES mặc định.")
-            return fallback_list
-
-        angles = [pose[i] for i in range(8)]
-        print(f"[OK] Loaded LEG_INIT_ANGLES from {POSE_FILE}: {angles}")
-        return angles
-
-    except Exception as e:
-        print(f"[WARN] Lỗi đọc pose file: {e}. Dùng LEG_INIT_ANGLES mặc định.")
-        return fallback_list
-
 
 # ===================== AUDIO UNLOCK (SPK_EN) =====================
 
@@ -166,23 +88,17 @@ LEG_PINS  = [0, 1, 2, 3, 4, 5, 6, 7]
 HEAD_PINS = [8, 9, 10]   # [NECK_PITCH, NECK_TILT, HEAD_YAW]
 TAIL_PIN  = [11]
 
-# fallback (nếu file pose lỗi/mất)
-LEG_INIT_ANGLES_FALLBACK = [-3, 89, 9, -80, 3, 90, 10, -90]
-
-# >>> chỉ thay LEG_INIT_ANGLES bằng file config <<<
-LEG_INIT_ANGLES = load_leg_init_angles_or_fallback(LEG_INIT_ANGLES_FALLBACK)
-
-# giữ nguyên như bạn yêu cầu
-HEAD_INIT_ANGLES = [20, -45, -90]
-TAIL_INIT_ANGLE  = [30]   # MUST be list
-
+LEG_INIT_ANGLES  = [-3, 89, 9, -80, 3, 90, 10, -90]
+HEAD_INIT_ANGLES = [20, -45, -90]   # pose init bạn muốn
+TAIL_INIT_ANGLE  = [30]             # MUST be list
 
 # ===================== FORCE HEAD SERVO AFTER INIT =====================
-
+# Mình hiểu “head index 3” bạn nói = HEAD_YAW (P10). Nếu muốn đổi, sửa ở đây:
 FORCE_HEAD_PORT  = "P10"
 FORCE_HEAD_ANGLE = -90
 
 def force_servo_angle(port: str, angle: float, hold=0.3):
+    # clamp an toàn theo robot_hat (-90..90)
     if angle < -90: angle = -90
     if angle > 90:  angle = 90
 
@@ -202,7 +118,6 @@ def main():
     unlock_robothat_speaker(SPEAKER_DEVICE)
 
     print("\nInit PiDog...")
-    print("POSE_FILE:", POSE_FILE)
     print("LEG_PINS :", LEG_PINS,  "angles:", LEG_INIT_ANGLES)
     print("HEAD_PINS:", HEAD_PINS, "angles:", HEAD_INIT_ANGLES)
     print("TAIL_PIN :", TAIL_PIN,  "angle :", TAIL_INIT_ANGLE)
@@ -219,6 +134,7 @@ def main():
     if hasattr(dog, "wait_all_done"):
         dog.wait_all_done()
 
+    # Quan trọng: ép servo head sau init (bỏ qua giới hạn pidog)
     sleep(0.2)
     force_servo_angle(FORCE_HEAD_PORT, FORCE_HEAD_ANGLE, hold=0.4)
 
