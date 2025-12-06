@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import time
+import subprocess
 from time import sleep
 from robot_hat import Servo
 from pidog import Pidog
 
 
 # ===== POSE PRE-INIT (theo hình bạn upload) =====
-# (đây là pose bạn muốn đưa robot về TRƯỚC khi init pidog)
 PREPOSE = {
     "P0":  -4,
     "P1":  87,
@@ -24,7 +24,6 @@ PREPOSE = {
     "P11":  0,
 }
 
-# thứ tự để ít té: head/tail -> rear -> front
 PREPOSE_ORDER = ["P8", "P9", "P10", "P11", "P4", "P5", "P6", "P7", "P0", "P1", "P2", "P3"]
 
 
@@ -43,26 +42,38 @@ def apply_pose_robot_hat(pose: dict, order, step_delay=0.03):
         sleep(step_delay)
 
 
-def main():
-    print("=== PREPOSE (robot_hat) -> delay 1s -> init Pidog ===")
+def cleanup_gpio_busy():
+    # Fix lgpio/gpiozero: GPIO busy
+    subprocess.run(
+        ["bash", "-lc", "sudo fuser -k /dev/gpiochip* /dev/gpiomem /dev/mem 2>/dev/null || true"],
+        check=False
+    )
+    time.sleep(0.2)
 
-    # 1) PREPOSE: đưa về đúng tư thế bạn upload
-    print("[STEP 1] Pre-pose by robot_hat.Servo ...")
+
+def main():
+    print("=== PREPOSE -> delay 1s -> cleanup GPIO -> init Pidog ===")
+
+    # 1) PREPOSE
+    print("[1] Pre-pose by robot_hat.Servo ...")
     apply_pose_robot_hat(PREPOSE, PREPOSE_ORDER, step_delay=0.03)
 
-    # 2) Delay 1s để servo ổn định
-    print("[STEP 2] Stabilize 1.0s ...")
+    # 2) stabilize
+    print("[2] Stabilize 1.0s ...")
     time.sleep(1.0)
 
-    # 3) Init Pidog sau khi đã ổn định
-    print("[STEP 3] Init Pidog ...")
-    dog = Pidog()   # dùng init mặc định của thư viện (đúng yêu cầu)
+    # 3) release GPIO for pidog.reset_mcu()
+    print("[3] Cleanup GPIO busy ...")
+    cleanup_gpio_busy()
 
-    # Optional: đợi action queue (nếu có)
+    # 4) init pidog
+    print("[4] Init Pidog() ...")
+    dog = Pidog()
+
     if hasattr(dog, "wait_all_done"):
         dog.wait_all_done()
 
-    print("[DONE] Prepose -> delay -> init complete.")
+    print("[DONE] OK")
     try:
         dog.close()
     except:
