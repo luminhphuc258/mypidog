@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# check mic ne: fuser -v /dev/snd/*
+
 """
 Matthew Robot – Auto Listening on Raspberry Pi
 - Ghi âm theo ngưỡng
