@@ -115,7 +115,7 @@ LEG_INIT_ANGLES = [-3, 89, 9, -80, 3, 90, 10, -90]
 # Head theo mapping mới: [NECK_PITCH(P8), NECK_TILT(P9), HEAD_YAW(P10)]
 # Bạn bị "ngã trái 90" là do P9=+90 -> tilt max.
 # Cho đầu thẳng: set tilt = 0
-HEAD_INIT_ANGLES = [90, -90, -29]
+HEAD_INIT_ANGLES = [90, -90, 90]
 
 # Tail: PHẢI là list (số phần tử = số pin tail)
 TAIL_INIT_ANGLE = [0]
