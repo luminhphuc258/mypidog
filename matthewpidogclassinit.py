@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
+import json
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from time import sleep
 
 from pidog import Pidog
@@ -13,9 +16,13 @@ from robot_hat import Servo
 
 class MatthewPidogBootClass:
     """
-    - Unlock Robot-HAT/PiDog speaker via SPK_EN GPIO (như i2samp.sh)
-    - Init Pidog theo mảng góc LEG_INIT_ANGLES cố định (KHÔNG đọc file config)
-    - (Optional) Force head servo sau init (bypass giới hạn pidog)
+    Flow mới:
+    (A) (Optional) cleanup GPIO busy
+    (B) Unlock speaker (SPK_EN)
+    (C) Pre-pose: đọc pose file -> set servo bằng robot_hat.Servo (KHÔNG dùng pidog)
+        -> delay 1s cho ổn định
+    (D) Init Pidog với mảng góc cố định như hiện tại
+    (E) (Optional) Force head servo sau init (bypass pidog)
     """
 
     # ===== fixed pins mapping =====
@@ -23,10 +30,8 @@ class MatthewPidogBootClass:
     HEAD_PINS = [8, 9, 10]   # [NECK_PITCH, NECK_TILT, HEAD_YAW]
     TAIL_PIN  = [11]
 
-    # ✅ fixed init angles (theo bạn yêu cầu)
-    LEG_INIT_ANGLES = [-3, 60, 9, -60, 3, 60, 10, -60]
-
-    # giữ nguyên như trước
+    # ✅ init angles cố định (như bạn yêu cầu giữ nguyên)
+    LEG_INIT_ANGLES  = [-3, 89, 9, -80, 3, 90, 10, -90]
     HEAD_INIT_ANGLES = [20, -45, -90]
     TAIL_INIT_ANGLE  = [30]  # MUST be list
 
@@ -35,18 +40,32 @@ class MatthewPidogBootClass:
     def __init__(
         self,
         speaker_device: str = "plughw:3,0",
+        pose_file: str | Path = "pidog_pose_config.txt",
+
+        # pre-pose (robot_hat only, before pidog init)
+        enable_prepose: bool = True,
+        prepose_delay_sec: float = 1.0,
+        prepose_step_delay: float = 0.02,  # delay nhẹ giữa các servo để đỡ giật
+
+        # after pidog init
         enable_force_head: bool = True,
         force_head_port: str = "P10",
         force_head_angle: float = -90,
-        stabilize_sec: float = 1.0,   # cho servo ổn định chống té
-        cleanup_gpio: bool = False,   # nếu muốn auto dọn GPIO busy
-        kill_python: bool = False,    # mạnh tay (chỉ dùng khi bị GPIO busy hoài)
+
+        # GPIO busy handling
+        cleanup_gpio: bool = False,
+        kill_python: bool = False,
     ):
         self.speaker_device = speaker_device
+        self.pose_file = Path(pose_file) if not isinstance(pose_file, Path) else pose_file
+
+        self.enable_prepose = enable_prepose
+        self.prepose_delay_sec = prepose_delay_sec
+        self.prepose_step_delay = prepose_step_delay
+
         self.enable_force_head = enable_force_head
         self.force_head_port = force_head_port
         self.force_head_angle = force_head_angle
-        self.stabilize_sec = stabilize_sec
 
         self.cleanup_gpio = cleanup_gpio
         self.kill_python = kill_python
@@ -129,54 +148,95 @@ class MatthewPidogBootClass:
         print(f"[OK] Speaker unlocked (SPK_EN GPIO{pin})")
         return True
 
+    # ===================== PRE-POSE (robot_hat only) =====================
+
+    def _parse_pose_file(self, path: Path) -> dict[int, float]:
+        """
+        Trả dict {channel:int -> angle:float} cho P0..P11
+        Hỗ trợ JSON hoặc text kiểu:
+          P0: -3
+          P1 = 89
+          ...
+        """
+        txt = path.read_text(encoding="utf-8", errors="ignore").strip()
+
+        # JSON first
+        try:
+            obj = json.loads(txt)
+            out = {}
+            for k, v in obj.items():
+                m = re.search(r"(\d+)", str(k))
+                if m:
+                    out[int(m.group(1))] = float(v)
+            return out
+        except Exception:
+            pass
+
+        out = {}
+        for line in txt.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("//"):
+                continue
+
+            m = re.search(r"[Pp]\s*(\d+)\s*[:=]\s*(-?\d+(?:\.\d+)?)", line)
+            if m:
+                out[int(m.group(1))] = float(m.group(2))
+                continue
+
+            nums = re.findall(r"-?\d+(?:\.\d+)?", line)
+            if len(nums) >= 2:
+                ch = int(float(nums[0]))
+                ang = float(nums[1])
+                out[ch] = ang
+
+        return out
+
+    def _clamp(self, a: float) -> float:
+        if a < -90: return -90
+        if a > 90:  return 90
+        return a
+
+    def apply_pose_from_file(self):
+        """
+        Set servo theo pose file bằng robot_hat.Servo, không gọi pidog.
+        Set theo thứ tự: legs -> head -> tail để ít té.
+        """
+        if not self.pose_file.exists():
+            print(f"[WARN] Pose file not found: {self.pose_file} (skip prepose)")
+            return False
+
+        pose = self._parse_pose_file(self.pose_file)
+        if not pose:
+            print(f"[WARN] Pose file parse fail/empty: {self.pose_file} (skip prepose)")
+            return False
+
+        # build angles list with available ones
+        order = list(range(0, 8)) + [8, 9, 10] + [11]  # legs, head, tail
+        print(f"[PREPOSE] Applying pose from: {self.pose_file}")
+
+        for ch in order:
+            if ch not in pose:
+                continue
+            ang = self._clamp(float(pose[ch]))
+            port = f"P{ch}"
+            try:
+                Servo(port).angle(ang)
+                if self.prepose_step_delay and self.prepose_step_delay > 0:
+                    sleep(self.prepose_step_delay)
+            except Exception as e:
+                print(f"[PREPOSE WARN] {port} -> {ang} failed: {e}")
+
+        if self.prepose_delay_sec and self.prepose_delay_sec > 0:
+            print(f"[PREPOSE] Stabilize {self.prepose_delay_sec:.1f}s ...")
+            time.sleep(self.prepose_delay_sec)
+
+        return True
+
     # ===================== FORCE SERVO =====================
 
     def force_servo_angle(self, port: str, angle: float, hold=0.3):
-        if angle < -90: angle = -90
-        if angle > 90:  angle = 90
+        angle = self._clamp(float(angle))
         try:
-            s = Servo(port)
-            s.angle(angle)
+            Servo(port).angle(angle)
             sleep(hold)
-            print(f"[FORCE] {port} -> {angle}° (bypass pidog)")
-            return True
-        except Exception as e:
-            print(f"[FORCE ERROR] {port}: {e}")
-            return False
-
-    # ===================== CREATE PIDOG =====================
-
-    def create(self) -> Pidog:
-        if self.cleanup_gpio:
-            self.cleanup_gpio_busy()
-
-        self.unlock_robothat_speaker()
-
-        print("\nInit PiDog (fixed LEG_INIT_ANGLES)...")
-        print("LEG_PINS :", self.LEG_PINS,  "angles:", self.LEG_INIT_ANGLES)
-        print("HEAD_PINS:", self.HEAD_PINS, "angles:", self.HEAD_INIT_ANGLES)
-        print("TAIL_PIN :", self.TAIL_PIN,  "angle :", self.TAIL_INIT_ANGLE)
-
-        self.dog = Pidog(
-            leg_pins=self.LEG_PINS,
-            head_pins=self.HEAD_PINS,
-            tail_pin=self.TAIL_PIN,
-            leg_init_angles=self.LEG_INIT_ANGLES,
-            head_init_angles=self.HEAD_INIT_ANGLES,
-            tail_init_angle=self.TAIL_INIT_ANGLE
-        )
-
-        if hasattr(self.dog, "wait_all_done"):
-            self.dog.wait_all_done()
-
-        # force head after init
-        if self.enable_force_head:
-            sleep(0.2)
-            self.force_servo_angle(self.force_head_port, self.force_head_angle, hold=0.4)
-
-        # stabilize
-        if self.stabilize_sec and self.stabilize_sec > 0:
-            print(f"[STABLE] waiting {self.stabilize_sec:.1f}s for servos to stabilize...")
-            time.sleep(self.stabilize_sec)
-
-        return self.dog
+            print(f"[FORCE] {port} -> {angle}°
