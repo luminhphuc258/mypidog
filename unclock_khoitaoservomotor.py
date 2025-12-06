@@ -119,7 +119,7 @@ LEG_INIT_ANGLES = [-3, 89, 9, -80, 3, 90, 10, -90]
 HEAD_INIT_ANGLES = [90, -90, -90]
 
 # Tail: PHẢI là list (số phần tử = số pin tail)
-TAIL_INIT_ANGLE = [0]
+TAIL_INIT_ANGLE = [30]
 
 
 def main():
