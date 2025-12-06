@@ -12,38 +12,38 @@ def main():
         force_head_port="P10",
         force_head_angle=-90,
     )
+
     my_dog = boot.create()
 
     try:
-        # 1) Stand
-        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.6)
-        my_dog.do_action('stand', speed=80)
-        my_dog.wait_all_done()
-        time.sleep(0.4)
-
-        # 2) Forward a bit
-        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.5)
-        my_dog.do_action('forward', step_count=4, speed=95)
+        # 1) Stand nhanh
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.8)
+        my_dog.do_action('stand', speed=95)
         my_dog.wait_all_done()
         time.sleep(0.2)
 
-        # 3) Turn right one round (thường step_count càng lớn càng xoay nhiều)
-        my_dog.rgb_strip.set_mode('boom', 'blue', bps=2)
-        my_dog.do_action('turn_right', step_count=12, speed=90)
+        # 2) Forward nhanh
+        my_dog.rgb_strip.set_mode('breath', 'white', bps=0.7)
+        my_dog.do_action('forward', step_count=6, speed=99)
         my_dog.wait_all_done()
-        time.sleep(0.2)
+        time.sleep(0.1)
 
-        # 4) Turn left (ít hơn 1 vòng)
-        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=2)
-        my_dog.do_action('turn_left', step_count=6, speed=90)
+        # 3) Turn LEFT nhanh (tăng speed + giảm step_count)
+        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=3)
+        my_dog.do_action('turn_left', step_count=5, speed=99)
         my_dog.wait_all_done()
-        time.sleep(0.2)
+        time.sleep(0.05)
 
-        # 5) Sit down
-        my_dog.rgb_strip.set_mode('breath', 'red', bps=0.6)
-        my_dog.do_action('sit', speed=70)
+        # 4) Turn RIGHT nhanh
+        my_dog.rgb_strip.set_mode('boom', 'blue', bps=3)
+        my_dog.do_action('turn_right', step_count=5, speed=99)
         my_dog.wait_all_done()
-        time.sleep(0.2)
+        time.sleep(0.05)
+
+        # 5) Sit nhanh
+        my_dog.rgb_strip.set_mode('breath', 'red', bps=0.8)
+        my_dog.do_action('sit', speed=90)
+        my_dog.wait_all_done()
 
     except KeyboardInterrupt:
         pass
