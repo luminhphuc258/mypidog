@@ -2,14 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import time
-import subprocess
 from time import sleep
-
 from robot_hat import Servo
-from matthewpidogclassinit import MatthewPidogBootClass
 
 
-# ===== POSE (theo hình bạn upload) =====
+# =================== POSE A: PRE-POSE (bạn có thể chỉnh) ===================
+# Nếu bạn muốn prepose khác, chỉ cần sửa mảng này.
 PREPOSE = {
     "P0":  -4,
     "P1":  87,
@@ -25,8 +23,24 @@ PREPOSE = {
     "P11":  0,
 }
 
-# thứ tự ít té: head/tail -> rear -> front
-PREPOSE_ORDER = ["P8", "P9", "P10", "P11", "P4", "P5", "P6", "P7", "P0", "P1", "P2", "P3"]
+# =================== POSE B: THEO HÌNH BẠN GỬI (pidog_pose_config.txt) ===================
+POSE_FROM_IMAGE = {
+    "P0":  -3,
+    "P1":  89,
+    "P2":   9,
+    "P3": -80,
+    "P4":   3,
+    "P5":  90,
+    "P6":  10,
+    "P7": -90,
+    "P8": -29,
+    "P9":  90,
+    "P10": -90,
+    "P11":  0,
+}
+
+# Thứ tự set để đỡ té: head/tail -> rear -> front
+ORDER_SAFE = ["P8", "P9", "P10", "P11", "P4", "P5", "P6", "P7", "P0", "P1", "P2", "P3"]
 
 
 def clamp(a: float) -> float:
@@ -35,54 +49,34 @@ def clamp(a: float) -> float:
     return a
 
 
-def apply_pose_robot_hat(pose: dict, order, step_delay=0.03):
+def apply_pose(pose: dict, order=ORDER_SAFE, step_delay=0.03):
     for port in order:
         if port not in pose:
             continue
         ang = clamp(float(pose[port]))
-        Servo(port).angle(ang)
-        sleep(step_delay)
-
-
-def cleanup_gpio_busy():
-    # giải phóng GPIO để bootclass/pidog reset_mcu không bị lgpio GPIO busy
-    subprocess.run(
-        ["bash", "-lc", "sudo fuser -k /dev/gpiochip* /dev/gpiomem /dev/mem 2>/dev/null || true"],
-        check=False
-    )
-    time.sleep(0.2)
+        try:
+            Servo(port).angle(ang)
+            sleep(step_delay)
+        except Exception as e:
+            print(f"[WARN] {port} -> {ang} fail: {e}")
 
 
 def main():
-    print("=== PREPOSE -> delay 1s -> BootClass init ===")
+    print("=== robot_hat ONLY: PREPOSE -> delay 1s -> POSE_FROM_IMAGE -> DONE ===")
 
-    # 1) Pre-pose (robot_hat only)
-    print("[1] Pre-pose motors by robot_hat.Servo ...")
-    apply_pose_robot_hat(PREPOSE, PREPOSE_ORDER, step_delay=0.03)
+    # Step 1: Pre-pose
+    print("[1] Apply PREPOSE ...")
+    apply_pose(PREPOSE, ORDER_SAFE, step_delay=0.03)
 
-    # 2) Delay 1s stabilize
+    # Step 2: delay 1s
     print("[2] Stabilize 1.0s ...")
     time.sleep(1.0)
 
-    # 3) Cleanup GPIO busy BEFORE bootclass init (pidog calls reset_mcu)
-    print("[3] Cleanup GPIO busy before BootClass.create() ...")
-    cleanup_gpio_busy()
+    # Step 3: set pose theo hình bạn gửi
+    print("[3] Apply POSE_FROM_IMAGE ...")
+    apply_pose(POSE_FROM_IMAGE, ORDER_SAFE, step_delay=0.03)
 
-    # 4) Init robot using your class
-    print("[4] Init by MatthewPidogBootClass ...")
-    boot = MatthewPidogBootClass(
-        cleanup_gpio=False,      # vì mình đã cleanup ở step 3
-        kill_python=False,
-        enable_prepose=False     # vì mình đã prepose ở step 1
-    )
-
-    dog = boot.create()
-
-    print("[DONE] Robot init OK via BootClass.")
-    try:
-        dog.close()
-    except:
-        pass
+    print("[DONE] Finished (no pidog).")
 
 
 if __name__ == "__main__":
