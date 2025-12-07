@@ -114,7 +114,7 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("stand", speed=10)
+        dog.do_action("stand", speed=1)
         dog.wait_all_done()
         time.sleep(0.3)
 
@@ -122,7 +122,7 @@ def main():
         # Step 4) return to pose from file (robot_hat only) then close
         print("[STEP4] Return to config pose then exit.")
       
-        apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
+        #apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
 if __name__ == "__main__":
     main()
