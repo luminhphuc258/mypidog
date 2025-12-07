@@ -25,7 +25,7 @@ def main():
     # sit
     dog.do_action("sit", speed=92)
     dog.wait_all_done()
-     time.sleep(0.3)
+    time.sleep(0.3)
 
     # stand
     dog.do_action("stand", speed=92)
