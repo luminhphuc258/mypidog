@@ -60,4 +60,147 @@ def cleanup_gpio_busy():
 def make_servos(ports):
     s = {}
     for p in ports:
-        tr
+        try:
+            s[p] = Servo(p)
+        except Exception as e:
+            print(f"[WARN] Servo({p}) init fail: {e}")
+    return s
+
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def move_ports_smooth(servos, current, target, ports, steps=DEFAULT_STEPS):
+    """
+    Nội suy mượt các port trong 'ports' từ current -> target.
+    current/target là dict {"P4": angle, ...}
+    """
+    for i in range(1, steps + 1):
+        t = i / steps
+        for p in ports:
+            if p not in servos:
+                continue
+            a0 = float(current.get(p, 0.0))
+            a1 = float(target.get(p, a0))
+            ang = clamp(lerp(a0, a1, t))
+            servos[p].angle(ang)
+        sleep(STEP_DELAY)
+
+    # cập nhật current
+    for p in ports:
+        if p in target:
+            current[p] = float(target[p])
+
+
+def apply_pose_fast_sync(servos, current, pose, order, steps=18):
+    """
+    Sync robot về một pose nền (ví dụ STAND) trước khi làm chuyển động.
+    """
+    move_ports_smooth(servos, current, pose, order, steps=steps)
+    sleep(SETTLE_SEC)
+
+
+def main():
+    print("=== STAND -> SIT (smooth) -> STAND (smooth) | robot_hat only ===")
+    cleanup_gpio_busy()
+
+    # dùng toàn bộ P0..P11
+    all_ports = [f"P{i}" for i in range(12)]
+    servos = make_servos(all_ports)
+
+    # current state giả định: unknown -> sync về STAND_POSE để chắc chắn
+    current = {p: 0.0 for p in all_ports}
+
+    # 0) Sync về pose đứng trong hình (để “đang đứng” đúng)
+    print("[SYNC] Apply STAND pose (from your screenshot)...")
+    sync_order = ["P8", "P9", "P10", "P11", "P4", "P5", "P6", "P7", "P0", "P1", "P2", "P3"]
+    apply_pose_fast_sync(servos, current, STAND_POSE, sync_order, steps=22)
+
+    # =========================
+    # Suy luận “ngược” STAND -> SIT:
+    # Giữ P0..P3 làm trụ, chỉ hạ 2 chân sau theo 3 tầng.
+    # (Bạn có thể chỉnh các số ở đây nếu muốn ngồi sâu hơn/ít hơn)
+    # =========================
+    sit_stage_1 = {  # hạ nhẹ
+        "P4": 12, "P5": 72,   # rear-left
+        "P6": 12, "P7": -72,  # rear-right
+    }
+    sit_stage_2 = {  # hạ vừa
+        "P4": 22, "P5": 52,
+        "P6": 22, "P7": -52,
+    }
+    sit_stage_3 = {  # hạ sâu (ngồi)
+        "P4": 32, "P5": 32,
+        "P6": 32, "P7": -32,
+    }
+
+    # 1) STAND -> SIT (mượt)
+    print("[PHASE] STAND -> SIT (keep P0..P3 fixed)")
+    # head/tail giữ nguyên (không bắt buộc, nhưng giữ ổn định)
+    sleep(0.3)
+
+    # stage 1: P4,P5 trước
+    print("  -> Stage1: move P4,P5")
+    move_ports_smooth(servos, current, sit_stage_1, ["P4", "P5"], steps=DEFAULT_STEPS)
+    print(f"  settle {SETTLE_SEC:.1f}s")
+    sleep(SETTLE_SEC)
+
+    # stage 1: P6,P7 sau
+    print("  -> Stage1: move P6,P7")
+    move_ports_smooth(servos, current, sit_stage_1, ["P6", "P7"], steps=DEFAULT_STEPS)
+    print(f"  settle {SETTLE_SEC:.1f}s")
+    sleep(SETTLE_SEC)
+
+    # stage 2: P4,P5
+    print("  -> Stage2: move P4,P5")
+    move_ports_smooth(servos, current, sit_stage_2, ["P4", "P5"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+
+    # stage 2: P6,P7
+    print("  -> Stage2: move P6,P7")
+    move_ports_smooth(servos, current, sit_stage_2, ["P6", "P7"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+
+    # stage 3: P4,P5
+    print("  -> Stage3: move P4,P5")
+    move_ports_smooth(servos, current, sit_stage_3, ["P4", "P5"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+
+    # stage 3: P6,P7
+    print("  -> Stage3: move P6,P7")
+    move_ports_smooth(servos, current, sit_stage_3, ["P6", "P7"], steps=DEFAULT_STEPS)
+    print("[OK] Now in SIT-like pose (rear lowered).")
+    sleep(SETTLE_SEC)
+
+    # 2) SIT -> STAND (đi ngược lại y chang, mượt)
+    print("[PHASE] SIT -> STAND (reverse stages, keep P0..P3 fixed)")
+
+    # reverse stage 2
+    print("  -> Back to Stage2: move P4,P5")
+    move_ports_smooth(servos, current, sit_stage_2, ["P4", "P5"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+    print("  -> Back to Stage2: move P6,P7")
+    move_ports_smooth(servos, current, sit_stage_2, ["P6", "P7"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+
+    # reverse stage 1
+    print("  -> Back to Stage1: move P4,P5")
+    move_ports_smooth(servos, current, sit_stage_1, ["P4", "P5"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+    print("  -> Back to Stage1: move P6,P7")
+    move_ports_smooth(servos, current, sit_stage_1, ["P6", "P7"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+
+    # back to full STAND pose (rear only, vì front trụ giữ nguyên)
+    print("  -> Back to STAND rear: move P4,P5")
+    move_ports_smooth(servos, current, STAND_POSE, ["P4", "P5"], steps=DEFAULT_STEPS)
+    sleep(SETTLE_SEC)
+    print("  -> Back to STAND rear: move P6,P7")
+    move_ports_smooth(servos, current, STAND_POSE, ["P6", "P7"], steps=DEFAULT_STEPS)
+
+    print("[DONE] Finished: STAND -> SIT -> STAND (robot_hat only).")
+
+
+if __name__ == "__main__":
+    main()
