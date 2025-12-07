@@ -93,7 +93,7 @@ def main():
 
     # Step 1) set robot to pose from file (robot_hat only)
     cfg = load_pose_config(POSE_FILE)
-    apply_pose_config(cfg)
+    apply_pose_config(cfg,step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
     # Step 2) boot/init pidog via Matthew class
     print("[STEP2] Boot Pidog by MatthewPidogBootClass...")
@@ -121,21 +121,8 @@ def main():
     finally:
         # Step 4) return to pose from file (robot_hat only) then close
         print("[STEP4] Return to config pose then exit.")
-        try:
-            if hasattr(dog, "body_stop"):
-                dog.body_stop()
-        except:
-            pass
-
+      
         apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
-
-        try:
-            dog.close()
-        except:
-            pass
-
-    print("[DONE] Finished 4-step flow.")
-
 
 if __name__ == "__main__":
     main()
