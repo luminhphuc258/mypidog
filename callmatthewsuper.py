@@ -106,7 +106,7 @@ def main():
         print("[STEP3] Actions: push_up -> sit -> stand")
         dog.rgb_strip.set_mode("breath", "white", bps=0.6)
 
-        push_up(dog, speed=20)
+        push_up(dog, speed=120)
         dog.wait_all_done()
         time.sleep(0.3)
 
@@ -126,18 +126,11 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        #turn right 10s
-        # đo 1 step quay mất bao lâu
+        #turn right 5s
         t0 = time.time()
-        dog.do_action("turn_right", step_count=1, speed=230)
-        dog.wait_all_done()
-        dt = time.time() - t0
-
-        # tính step_count cho ~10s
-        steps = max(1, int(10.0 / dt))
-
-        dog.do_action("turn_right", step_count=steps, speed=230)
-        dog.wait_all_done()
+        while time.time() - t0 < 5.0:
+            dog.do_action("turn_right", step_count=1, speed=230)  
+            dog.wait_all_done()
         time.sleep(0.3)
 
         # dog.do_action("turn_right", speed=290)
