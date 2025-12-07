@@ -11,7 +11,7 @@ from time import sleep
 from robot_hat import Servo
 from pidog.preset_actions import push_up
 from matthewpidogclassinit import MatthewPidogBootClass
-
+from pidog.preset_actions import push_up, bark
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
 DELAY_BETWEEN_WRITES = 0.01
@@ -81,24 +81,34 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 
 # ===================== HEAD LOCK + WIGGLE THREAD =====================
 
-def start_head_controller(p9_fixed=-90, p10_a=-70, p10_b=-89,
-                          write_interval=0.10, hold_range=(0.5, 1.4)):
+# ===================== HEAD LOCK + WIGGLE THREAD =====================
+
+def start_head_controller(
+    p8_fixed=32,          # ✅ luôn giữ P8 = 32
+    p9_fixed=-90,         # luôn giữ P9
+    p10_a=-70, p10_b=-89, # P10 lắc giữa 2 góc
+    write_interval=0.10,
+    hold_range=(0.5, 1.4)
+):
     """
+    - P8: luôn giữ p8_fixed
     - P9: luôn giữ p9_fixed
     - P10: thỉnh thoảng đổi giữa p10_a và p10_b
     """
     stop_evt = threading.Event()
 
     try:
+        s8 = Servo("P8")
         s9 = Servo("P9")
         s10 = Servo("P10")
     except Exception as e:
-        print(f"[WARN] Cannot init head servos P9/P10: {e}")
+        print(f"[WARN] Cannot init head servos P8/P9/P10: {e}")
         return stop_evt, None
 
     def worker():
         # set lần đầu
         try:
+            s8.angle(clamp(p8_fixed))
             s9.angle(clamp(p9_fixed))
             s10.angle(clamp(p10_b))
         except:
@@ -110,13 +120,13 @@ def start_head_controller(p9_fixed=-90, p10_a=-70, p10_b=-89,
         while not stop_evt.is_set():
             now = time.time()
 
-            # tới lúc thì đổi target P10
             if now >= next_flip:
                 target = p10_a if target == p10_b else p10_b
                 next_flip = now + random.uniform(*hold_range)
 
-            # ghi đè liên tục để “khóa” trong lúc pidog action chạy
+            # ✅ ghi đè liên tục để lock P8/P9 + wiggle P10
             try:
+                s8.angle(clamp(p8_fixed))
                 s9.angle(clamp(p9_fixed))
                 s10.angle(clamp(target))
             except:
@@ -127,6 +137,7 @@ def start_head_controller(p9_fixed=-90, p10_a=-70, p10_b=-89,
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     return stop_evt, t
+
 
 
 def main():
@@ -150,12 +161,15 @@ def main():
         # Step 3) actions
         print("[STEP3] Actions: push_up -> sit -> stand (+ head lock/wiggle)")
         dog.rgb_strip.set_mode("breath", "white", bps=0.6)
+        bark(my_dog, [0, 0, -40])
+        time.sleep(0.2)
 
         # bật “khóa P9 + lắc P10”
         head_stop_evt, head_thread = start_head_controller(
+           p8_fixed=32,
             p9_fixed=-90,
             p10_a=-70,
-            p10_b=-89,
+            p10_b=-90,
             write_interval=0.08,     # ghi đè khá nhanh để pidog không kéo lệch
             hold_range=(0.6, 1.6)    # “thỉnh thoảng” mới lắc
         )
@@ -170,6 +184,7 @@ def main():
 
         dog.do_action("stand", speed=1)
         dog.wait_all_done()
+        bark(my_dog, [0, 0, -40])
         time.sleep(0.3)
 
         dog.do_action("forward", speed=250)
@@ -178,6 +193,7 @@ def main():
 
         dog.do_action("backward", speed=250)
         dog.wait_all_done()
+        bark(my_dog, [0, 0, -40])
         time.sleep(0.3)
 
         # turn right 5s
