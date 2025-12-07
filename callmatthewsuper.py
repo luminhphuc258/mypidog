@@ -186,8 +186,9 @@ def main():
         dog.wait_all_done()
         bark(dog, [0, 0, -40])
         time.sleep(0.3)
-
-        while time.time() - t0 < 5.0:
+        # move forward 5s
+        tforward = time.time()
+        while time.time() - tforward < 5.0:
             dog.do_action("forward", speed=250)
             dog.wait_all_done()
         time.sleep(0.3)
