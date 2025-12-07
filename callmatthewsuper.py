@@ -159,8 +159,8 @@ def main():
     cfg = load_pose_config(POSE_FILE)
     # apply_pose_config(cfg,step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
-    apply_pose_config_smooth(cfg, start_pose=SIT_POSE, max_step_deg=1, frame_delay=0.04,
-                         skip_ports={"P0","P1","P2","P3"})
+    apply_pose_config_smooth(cfg, max_step_deg=1, frame_delay=0.04, settle_sec=1.0)
+
 
     # Step 2) boot/init pidog via Matthew class
     print("[STEP2] Boot Pidog by MatthewPidogBootClass...")
