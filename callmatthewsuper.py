@@ -118,15 +118,15 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("forward", speed=30)
+        dog.do_action("forward", speed=90)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("backward", speed=30)
+        dog.do_action("backward", speed=90)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("turn_right", speed=30)
+        dog.do_action("turn_right", speed=90)
         dog.wait_all_done()
         time.sleep(0.3)
 
@@ -134,7 +134,7 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("trot", speed=20)
+        dog.do_action("trot", speed=70)
         dog.wait_all_done()
         time.sleep(0.3)
 
