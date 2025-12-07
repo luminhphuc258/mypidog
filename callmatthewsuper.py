@@ -161,7 +161,7 @@ def main():
         # Step 3) actions
         print("[STEP3] Actions: push_up -> sit -> stand (+ head lock/wiggle)")
         dog.rgb_strip.set_mode("breath", "white", bps=0.6)
-        bark(my_dog, [0, 0, -40])
+        bark(dog, [0, 0, -40])
         time.sleep(0.2)
 
         # bật “khóa P9 + lắc P10”
@@ -184,7 +184,7 @@ def main():
 
         dog.do_action("stand", speed=1)
         dog.wait_all_done()
-        bark(my_dog, [0, 0, -40])
+        bark(dog, [0, 0, -40])
         time.sleep(0.3)
 
         dog.do_action("forward", speed=250)
@@ -193,7 +193,7 @@ def main():
 
         dog.do_action("backward", speed=250)
         dog.wait_all_done()
-        bark(my_dog, [0, 0, -40])
+        bark(dog, [0, 0, -40])
         time.sleep(0.3)
 
         # turn right 5s
