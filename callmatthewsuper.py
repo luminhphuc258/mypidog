@@ -174,11 +174,11 @@ def main():
             hold_range=(0.6, 1.6)    # “thỉnh thoảng” mới lắc
         )
 
-        push_up(dog, speed=120)
+        push_up(dog, speed=90)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("sit", speed=20)
+        dog.do_action("sit", speed=10)
         dog.wait_all_done()
         time.sleep(0.3)
 
@@ -187,8 +187,9 @@ def main():
         bark(dog, [0, 0, -40])
         time.sleep(0.3)
 
-        dog.do_action("forward", speed=250)
-        dog.wait_all_done()
+        while time.time() - t0 < 5.0:
+            dog.do_action("forward", speed=250)
+            dog.wait_all_done()
         time.sleep(0.3)
 
         dog.do_action("backward", speed=250)
