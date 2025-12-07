@@ -200,7 +200,7 @@ def main():
 
         # turn right 5s
         t0 = time.time()
-        while time.time() - t0 < 5.0:
+        while time.time() - t0 < 3.0:
             dog.do_action("turn_right", step_count=1, speed=230)
             dog.wait_all_done()
         time.sleep(0.3)
@@ -209,8 +209,21 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("trot", speed=160)
+        dog.do_action("backward", speed=250)
         dog.wait_all_done()
+        bark(dog, [0, 0, -40])
+        time.sleep(0.3)
+
+        #chay ve truoc nhanh
+        ttrot = time.time()
+        while time.time() - ttrot < 3.0:
+            dog.do_action("trot", speed=150)
+            dog.wait_all_done()
+        time.sleep(0.3)
+
+        dog.do_action("backward", speed=250)
+        dog.wait_all_done()
+        bark(dog, [0, 0, -40])
         time.sleep(0.3)
 
         dog.do_action("stand", speed=1)
