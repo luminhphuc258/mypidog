@@ -106,15 +106,15 @@ def main():
         print("[STEP3] Actions: push_up -> sit -> stand")
         dog.rgb_strip.set_mode("breath", "white", bps=0.6)
 
-        push_up(dog, speed=92)
+        push_up(dog, speed=20)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("sit", speed=92)
+        dog.do_action("sit", speed=20)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("stand", speed=92)
+        dog.do_action("stand", speed=10)
         dog.wait_all_done()
         time.sleep(0.3)
 
