@@ -18,12 +18,10 @@ SETTLE_SEC = 1.0             # delay sau mỗi phase
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
 
-def clamp(v, lo=ANGLE_MIN, hi=ANGLE_MAX):
-    try:
-        v = int(v)
-    except Exception:
-        v = 0
-    return max(lo, min(hi, v))
+def clamp(a: float) -> float:
+    if a < ANGLE_MIN: return ANGLE_MIN
+    if a > ANGLE_MAX: return ANGLE_MAX
+    return a
 
 
 def servo_set_angle(servo_obj, angle: int):
@@ -38,6 +36,72 @@ def servo_set_angle(servo_obj, angle: int):
         return
     raise RuntimeError("Servo object has no known angle/write method")
 
+def apply_pose_config_smooth(
+    cfg: dict,
+    start_pose: dict | None = None,          # pose hiện tại (gợi ý) để nội suy
+    max_step_deg: float = 1.0,               # càng nhỏ càng “nhẹ”
+    frame_delay: float = 0.03,               # càng lớn càng “nhẹ” (nhưng chậm)
+    settle_sec: float = 1.0,
+    skip_ports: set[str] | None = None,      # ví dụ {"P0","P1","P2","P3"} để giữ chân trụ
+):
+    """
+    Apply pose via robot_hat only (NO pidog), theo kiểu ramp mượt để giảm giật.
+    """
+    print("[POSE] Apply pose smooth (robot_hat.Servo)...")
+
+    skip_ports = skip_ports or set()
+
+    # init servo objects 1 lần
+    servos = {}
+    for p in SERVO_PORTS:
+        try:
+            servos[p] = Servo(p)
+        except Exception as e:
+            print(f"[WARN] Cannot init Servo({p}): {e}")
+
+    # nếu không có start_pose -> dùng góc target làm start (sẽ ít nhất không chạy bậy)
+    # tốt nhất: bạn truyền start_pose = pose hiện tại bạn biết (vd: pose sit)
+    current = {}
+    for p in SERVO_PORTS:
+        if p in skip_ports:
+            continue
+        if start_pose and p in start_pose:
+            current[p] = float(start_pose[p])
+        else:
+            current[p] = float(cfg.get(p, 0))
+
+    target = {p: float(cfg.get(p, 0)) for p in SERVO_PORTS}
+
+    # ramp nhiều frame: mỗi frame nhích max_step_deg
+    while True:
+        done = True
+        for p in SERVO_PORTS:
+            if p in skip_ports:
+                continue
+            if p not in servos:
+                continue
+
+            cur = current[p]
+            tgt = target[p]
+            diff = tgt - cur
+
+            if abs(diff) > 0.01:
+                done = False
+                step = max(-max_step_deg, min(max_step_deg, diff))
+                cur = clamp(cur + step)
+                current[p] = cur
+                try:
+                    servo_set_angle(servos[p], cur)
+                except Exception as e:
+                    print(f"[WARN] Apply {p} failed: {e}")
+
+        if done:
+            break
+        time.sleep(frame_delay)
+
+    if settle_sec and settle_sec > 0:
+        print(f"[STABLE] settle {settle_sec:.1f}s ...")
+        time.sleep(settle_sec)
 
 def load_pose_config(path: Path) -> dict:
     """
@@ -93,7 +157,10 @@ def main():
 
     # Step 1) set robot to pose from file (robot_hat only)
     cfg = load_pose_config(POSE_FILE)
-    apply_pose_config(cfg,step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
+    # apply_pose_config(cfg,step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
+
+    apply_pose_config_smooth(cfg, start_pose=SIT_POSE, max_step_deg=1, frame_delay=0.04,
+                         skip_ports={"P0","P1","P2","P3"})
 
     # Step 2) boot/init pidog via Matthew class
     print("[STEP2] Boot Pidog by MatthewPidogBootClass...")
@@ -118,15 +185,15 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("forward", speed=90)
+        dog.do_action("forward", speed=180)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("backward", speed=90)
+        dog.do_action("backward", speed=180)
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("turn_right", speed=90)
+        dog.do_action("turn_right", speed=190)
         dog.wait_all_done()
         time.sleep(0.3)
 
@@ -134,9 +201,15 @@ def main():
         dog.wait_all_done()
         time.sleep(0.3)
 
-        dog.do_action("trot", speed=70)
+        dog.do_action("trot", speed=150)
         dog.wait_all_done()
         time.sleep(0.3)
+
+        dog.do_action("sit", speed=1)
+        dog.wait_all_done()
+        time.sleep(0.3)
+
+
 
     finally:
         # Step 4) return to pose from file (robot_hat only) then close
