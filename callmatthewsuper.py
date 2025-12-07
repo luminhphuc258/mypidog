@@ -159,7 +159,7 @@ def main():
     cfg = load_pose_config(POSE_FILE)
     # apply_pose_config(cfg,step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
-    apply_pose_config_smooth(cfg, max_step_deg=1, frame_delay=0.04, settle_sec=1.0)
+    apply_pose_config_smooth(cfg, max_step_deg=0.3, frame_delay=0.02, settle_sec=2.0)
 
 
     # Step 2) boot/init pidog via Matthew class
