@@ -80,7 +80,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 # ===================== HEAD LOCK + WIGGLE THREAD =====================
 
 def start_head_controller(
-    p8_fixed=32,          # giữ nguyên P8
+    p8_fixed=90,          # giữ nguyên P8
     p9_fixed=-90,         # giữ nguyên P9
     p10_min=-80,          # P10 lắc từ -60
     p10_max=80,           # tới +60
