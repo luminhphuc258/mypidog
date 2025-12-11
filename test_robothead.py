@@ -86,7 +86,6 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         target_a = clamp(cfg.get(port_a, 0))
         target_b = clamp(cfg.get(port_b, 0))
 
-        # Giả định start ~0 độ
         curr_a = 0
         curr_b = 0
 
@@ -113,7 +112,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
                 break
             time.sleep(step_delay)
 
-    # --------- Helper: move single leg slow (P1 or P3) ----------
+    # --------- Helper: move single leg slow (P1 hoặc P3) ----------
     def move_single_slow(port):
         if port not in servos:
             print(f"[WARN] Missing servo {port}, skip slow move.")
@@ -122,7 +121,11 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         s = servos[port]
         target = clamp(cfg.get(port, 0))
 
-        curr = 0   # giả định từ 0; nếu muốn, có thể đổi thành góc bạn đo thực tế
+        # ✅ Đảo chiều RIÊNG cho P3 vì đang quay ngược
+        if port == "P3":
+            target = -target
+
+        curr = 0
         d = target - curr
         steps = int(abs(d))
         if steps <= 0:
@@ -130,7 +133,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             time.sleep(step_delay)
             return
 
-        print(f"  -> Slow leg {port}: {steps} mini-steps")
+        print(f"  -> Slow leg {port}: {steps} mini-steps (target={target})")
         for i in range(steps + 1):
             frac = i / float(steps)
             angle = curr + d * frac
@@ -146,7 +149,6 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         if p not in servos:
             continue
         if p in rear_legs or p in front_legs:
-            # P5,P7,P1,P3 tạm thời chưa đụng
             continue
         try:
             servo_set_angle(servos[p], cfg.get(p, 0))
@@ -172,18 +174,13 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 # ===================== HEAD LOCK + WIGGLE THREAD =====================
 
 def start_head_controller(
-    p8_fixed=90,          # giữ nguyên P8
-    p9_fixed=-90,         # giữ nguyên P9
-    p10_min=-80,          # P10 lắc từ -80
-    p10_max=80,           # tới +80
-    write_interval=0.08,  # tốc độ ghi
+    p8_fixed=90,
+    p9_fixed=-90,
+    p10_min=-80,
+    p10_max=80,
+    write_interval=0.08,
     hold_range=(0.5, 1.2)
 ):
-    """
-    - P8: luôn giữ p8_fixed
-    - P9: luôn giữ p9_fixed
-    - P10: lắc qua lại giữa p10_min và p10_max
-    """
     stop_evt = threading.Event()
 
     try:
@@ -195,7 +192,6 @@ def start_head_controller(
         return stop_evt, None
 
     def worker():
-        # set lần đầu
         try:
             s8.angle(clamp(p8_fixed))
             s9.angle(clamp(p9_fixed))
@@ -210,7 +206,6 @@ def start_head_controller(
             now = time.time()
 
             if now >= next_flip:
-                # đổi hướng lắc
                 target = p10_max if target == p10_min else p10_min
                 next_flip = now + random.uniform(*hold_range)
 
@@ -229,25 +224,21 @@ def start_head_controller(
 
 
 def main():
-    print("=== SIMPLE HEAD + SLOW REAR LEGS TEST ===")
+    print("=== SIMPLE HEAD + SLOW LEGS TEST ===")
 
-    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau & sau đó chân trước)
     cfg = load_pose_config(POSE_FILE)
     apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
-    # STEP 2: khởi tạo Pidog qua MatthewPidogBootClass
     print("[STEP2] Boot Pidog via MatthewPidogBootClass...")
     boot = MatthewPidogBootClass()
     dog = boot.create()
     time.sleep(1.0)
 
-    # STEP 3: cho robot đứng lên chuẩn
     print("[STEP3] dog.stand() ...")
     dog.do_action("stand", speed=30)
     dog.wait_all_done()
     time.sleep(0.5)
 
-    # STEP 4: bắt đầu lắc đầu
     print("[STEP4] Start head wiggle (P8,P9 fixed; P10 -60..+60). Ctrl+C to stop.")
     head_stop_evt, head_thread = start_head_controller(
         p8_fixed=32,
@@ -260,7 +251,7 @@ def main():
 
     try:
         while True:
-            time.sleep(0.5)   # chỉ giữ cho chương trình sống
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("\n[EXIT] Ctrl+C pressed, stopping head thread...")
     finally:
