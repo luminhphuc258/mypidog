@@ -7,64 +7,92 @@ from pathlib import Path
 from robot_hat import Servo
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
+
+# Hai servo chân sau
+P5_START = 18     # độ ban đầu
+P7_START = -13    # độ ban đầu
+
+DELAY = 0.05      # thời gian chờ giữa mỗi bước tăng 1°
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
-def clamp(v, lo=ANGLE_MIN, hi=ANGLE_MAX):
-    return max(lo, min(hi, int(v)))
 
-def load_pose_config(path: Path) -> dict:
-    cfg = {f"P{i}": 0 for i in range(12)}
+def clamp(v):
+    return max(ANGLE_MIN, min(ANGLE_MAX, int(v)))
+
+
+def load_pose_config(path: Path):
+    """Load JSON pose config từ file."""
+    cfg = {"P5": P5_START, "P7": P7_START}
     if not path.exists():
-        print("[WARN] pose file not found, use all 0")
+        print("[WARN] Config file not found, using default.")
         return cfg
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            for k, v in data.items():
-                if k in cfg:
-                    cfg[k] = clamp(v)
+        cfg["P5"] = clamp(data.get("P5", P5_START))
+        cfg["P7"] = clamp(data.get("P7", P7_START))
     except Exception as e:
-        print("[WARN] parse pose file error:", e)
+        print(f"[WARN] Cannot parse config: {e}")
     return cfg
 
+
+def apply_angle(servo, angle):
+    """Set servo angle safely with clamp."""
+    try:
+        servo.angle(clamp(angle))
+    except Exception as e:
+        print(f"[WARN] servo error: {e}")
+
+
 def main():
-    cfg = load_pose_config(POSE_FILE)
 
-    # Lấy góc mục tiêu cho P5 và P7 từ file config
-    target_p5 = clamp(cfg.get("P5", -5))
-    target_p7 = clamp(cfg.get("P7", -5))
-
-    # Góc hiện tại bạn nói
-    angle_p5 = -5
-    angle_p7 = -5
-
-    print("Target P5:", target_p5, "| Target P7:", target_p7)
+    print("=== STEP 1: Move P5 to +18°, P7 to -13° ===")
 
     s5 = Servo("P5")
     s7 = Servo("P7")
 
-    # set ngay góc ban đầu
-    s5.angle(angle_p5)
-    s7.angle(angle_p7)
-    time.sleep(0.3)
+    apply_angle(s5, P5_START)
+    apply_angle(s7, P7_START)
 
-    step_delay = 0.03   # chỉnh lớn nếu muốn chậm hơn
+    time.sleep(1.0)
 
-    # Cả 2 servo xoay cùng một chiều âm (giảm dần)
-    while (angle_p5 > target_p5) or (angle_p7 > target_p7):
+    print("=== STEP 2: Load target from config ===")
 
-        if angle_p5 > target_p5:
-            angle_p5 -= 1  # quay âm
+    cfg = load_pose_config(POSE_FILE)
+    target_P5 = cfg["P5"]
+    target_P7 = cfg["P7"]
 
-        if angle_p7 > target_p7:
-            angle_p7 -= 1  # quay âm
+    print(f"Target P5 → {target_P5}°")
+    print(f"Target P7 → {target_P7}°")
 
-        s5.angle(clamp(angle_p5))
-        s7.angle(clamp(angle_p7))
+    curr_P5 = P5_START
+    curr_P7 = P7_START
 
-        time.sleep(step_delay)
+    print("=== STEP 3: Alternating step movement ===")
 
-    print("DONE: P5 & P7 đã xoay đến góc config.")
+    while curr_P5 != target_P5 or curr_P7 != target_P7:
+
+        # ---- Move P5 ----
+        if curr_P5 != target_P5:
+            if target_P5 > curr_P5:
+                curr_P5 += 1
+            elif target_P5 < curr_P5:
+                curr_P5 -= 1
+            apply_angle(s5, curr_P5)
+            print(f"P5 → {curr_P5}")
+            time.sleep(DELAY)
+
+        # ---- Move P7 ----
+        if curr_P7 != target_P7:
+            if target_P7 > curr_P7:
+                curr_P7 += 1
+            elif target_P7 < curr_P7:
+                curr_P7 -= 1
+            apply_angle(s7, curr_P7)
+            print(f"P7 → {curr_P7}")
+            time.sleep(DELAY)
+
+    print("=== DONE! P5 & P7 reached config angles ===")
+
 
 if __name__ == "__main__":
     main()
