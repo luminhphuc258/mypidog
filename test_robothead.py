@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 0.08   # chỉnh nhanh/chậm tại đây
+DELAY_BETWEEN_WRITES = 0.2   # chỉnh nhanh/chậm tại đây
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
@@ -79,8 +79,8 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 
     # ===== STEP 0: set góc khởi tạo riêng cho P1 và P3 =====
     init_angles = {
-        "P1": 20,    # chân này đang ok
-        "P3": -20,   # chỉnh ngược chiều lại
+        "P1": 10,    # chân này đang ok
+        "P3": -10,   # chỉnh ngược chiều lại
     }
 
     print("  -> INIT front legs P1 & P3 (P1=50, P3=-50)...")
