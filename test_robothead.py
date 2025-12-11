@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 0.4   # tăng lên cho chậm hơn nếu muốn
+DELAY_BETWEEN_WRITES = 0.8   # tăng lên cho chậm hơn nếu muốn
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
@@ -123,8 +123,8 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 
         # ✅ Đảo chiều RIÊNG cho P3 vì đang quay ngược
         if port == "P3":
-            target = -target
-
+            target = target
+        #goc hien tai cua chan 
         curr = 0
         d = target - curr
         steps = int(abs(d))
@@ -145,25 +145,25 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             time.sleep(step_delay)
 
     # ===== BƯỚC 1: set tất cả servo KHÁC chân sau & chân trước =====
-    for p in SERVO_PORTS:
-        if p not in servos:
-            continue
-        if p in rear_legs or p in front_legs:
-            continue
-        try:
-            servo_set_angle(servos[p], cfg.get(p, 0))
-            time.sleep(step_delay)
-        except Exception as e:
-            print(f"[WARN] Apply {p} failed: {e}")
+    # for p in SERVO_PORTS:
+    #     if p not in servos:
+    #         continue
+    #     if p in rear_legs or p in front_legs:
+    #         continue
+    #     try:
+    #         servo_set_angle(servos[p], cfg.get(p, 0))
+    #         time.sleep(step_delay)
+    #     except Exception as e:
+    #         print(f"[WARN] Apply {p} failed: {e}")
 
     # ===== BƯỚC 2: Di chuyển RẤT CHẬM 2 chân sau (P5, P7) cùng lúc =====
     print("  -> Slowly move REAR legs together (P5 & P7)...")
     move_pair_slow("P5", "P7")
 
     # ===== BƯỚC 3: SAU KHI XONG P5,P7 MỚI BẮT ĐẦU DI CHUYỂN P1,P3 =====
-    print("  -> Slowly move FRONT legs (P1 then P3)...")
-    move_single_slow("P1")
-    move_single_slow("P3")
+    # print("  -> Slowly move FRONT legs (P1 then P3)...")
+    # move_single_slow("P1")
+    # move_single_slow("P3")
 
     # ===== Chờ ổn định =====
     if settle_sec and settle_sec > 0:
@@ -229,37 +229,37 @@ def main():
     cfg = load_pose_config(POSE_FILE)
     apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
-    print("[STEP2] Boot Pidog via MatthewPidogBootClass...")
-    boot = MatthewPidogBootClass()
-    dog = boot.create()
-    time.sleep(1.0)
+    # print("[STEP2] Boot Pidog via MatthewPidogBootClass...")
+    # boot = MatthewPidogBootClass()
+    # dog = boot.create()
+    # time.sleep(1.0)
 
-    print("[STEP3] dog.stand() ...")
-    dog.do_action("stand", speed=30)
-    dog.wait_all_done()
-    time.sleep(0.5)
+    # print("[STEP3] dog.stand() ...")
+    # dog.do_action("stand", speed=30)
+    # dog.wait_all_done()
+    # time.sleep(0.5)
 
-    print("[STEP4] Start head wiggle (P8,P9 fixed; P10 -60..+60). Ctrl+C to stop.")
-    head_stop_evt, head_thread = start_head_controller(
-        p8_fixed=32,
-        p9_fixed=-90,
-        p10_min=-60,
-        p10_max=60,
-        write_interval=0.08,
-        hold_range=(0.6, 1.5),
-    )
+    # print("[STEP4] Start head wiggle (P8,P9 fixed; P10 -60..+60). Ctrl+C to stop.")
+    # head_stop_evt, head_thread = start_head_controller(
+    #     p8_fixed=32,
+    #     p9_fixed=-90,
+    #     p10_min=-60,
+    #     p10_max=60,
+    #     write_interval=0.08,
+    #     hold_range=(0.6, 1.5),
+    # )
 
-    try:
-        while True:
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        print("\n[EXIT] Ctrl+C pressed, stopping head thread...")
-    finally:
-        if head_stop_evt is not None:
-            head_stop_evt.set()
-        if head_thread is not None:
-            head_thread.join(timeout=0.5)
-        print("[DONE] Head + slow legs test finished.")
+    # try:
+    #     while True:
+    #         time.sleep(0.5)
+    # except KeyboardInterrupt:
+    #     print("\n[EXIT] Ctrl+C pressed, stopping head thread...")
+    # finally:
+    #     if head_stop_evt is not None:
+    #         head_stop_evt.set()
+    #     if head_thread is not None:
+    #         head_thread.join(timeout=0.5)
+    #     print("[DONE] Head + slow legs test finished.")
 
 
 if __name__ == "__main__":
