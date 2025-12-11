@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 0.2   # bước nhỏ để đi rất chậm
+DELAY_BETWEEN_WRITES = 0.08   # tăng lên cho chậm hơn nếu muốn
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
@@ -56,11 +56,10 @@ def load_pose_config(path: Path) -> dict:
 
 def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SETTLE_SEC):
     """
-    Đưa robot về pose chuẩn, nhưng:
-      - 2 chân sau (P5, P7) đi CHUNG, rất chậm, nội suy từng ~1 độ.
-      - Sau đó 2 chân trước (P1, P3) cũng đi chung, rất chậm.
-      - Các servo còn lại set thẳng 1 lần.
-    Giả định vị trí ban đầu ~0 độ (an toàn); nếu khác thì vẫn đi mượt vì bước nhỏ.
+    Đưa robot về pose chuẩn:
+      - Tất cả servo khác set thẳng về config.
+      - 2 chân sau (P5, P7) đi CHUNG, rất chậm (nội suy từng ~1 độ).
+      - 2 chân trước (P1, P3) set thẳng về config (không slow để tránh xoay ngược).
     """
     print("[STEP1] Apply baseline pose from config (robot_hat.Servo)...")
 
@@ -71,6 +70,9 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             servos[p] = Servo(p)
         except Exception as e:
             print(f"[WARN] Cannot init Servo({p}): {e}")
+
+    rear_legs = {"P5", "P7"}     # 2 chân sau
+    front_legs = {"P1", "P3"}    # 2 chân trước (mapping của bạn, chỉnh nếu khác)
 
     # Helper: di chuyển 1 cặp servo cùng lúc, rất chậm
     def move_pair_slow(port_a, port_b):
@@ -84,7 +86,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         target_a = clamp(cfg.get(port_a, 0))
         target_b = clamp(cfg.get(port_b, 0))
 
-        # Giả định góc hiện tại ~0 (an toàn, bước nhỏ)
+        # Giả định ban đầu ~0 độ (safe). Bước nhỏ nên ổn.
         curr_a = 0
         curr_b = 0
 
@@ -112,14 +114,10 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             time.sleep(step_delay)
 
     # 1) Set tất cả servo KHÁC chân sau & chân trước trước tiên (một phát)
-    rear_legs = {"P5", "P7"}     # 2 chân sau
-    front_legs = {"P1", "P3"}    # 2 chân trước (chỉnh nếu bạn mapping khác)
-
     for p in SERVO_PORTS:
         if p not in servos:
             continue
         if p in rear_legs or p in front_legs:
-            # để dành cho slow move
             continue
         try:
             servo_set_angle(servos[p], cfg.get(p, 0))
@@ -131,9 +129,16 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
     print("  -> Slowly move REAR legs together (P5 & P7)...")
     move_pair_slow("P5", "P7")
 
-    # 3) Sau khi chân sau ổn định, di chuyển RẤT CHẬM 2 chân trước (P1, P3) cùng lúc
-    print("  -> Slowly move FRONT legs together (P1 & P3)...")
-    move_pair_slow("P1", "P3")
+    # 3) 2 chân trước: set thẳng về pose config (không nội suy để tránh xoay ngược)
+    print("  -> Set FRONT legs direct (P1 & P3)...")
+    for p in front_legs:
+        if p not in servos:
+            continue
+        try:
+            servo_set_angle(servos[p], cfg.get(p, 0))
+            time.sleep(step_delay)
+        except Exception as e:
+            print(f"[WARN] Apply {p} failed: {e}")
 
     # 4) Đợi robot ổn định
     if settle_sec and settle_sec > 0:
@@ -201,9 +206,9 @@ def start_head_controller(
 
 
 def main():
-    print("=== SIMPLE HEAD + SLOW LEGS TEST ===")
+    print("=== SIMPLE HEAD + SLOW REAR LEGS TEST ===")
 
-    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân)
+    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau)
     cfg = load_pose_config(POSE_FILE)
     apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
@@ -240,7 +245,7 @@ def main():
             head_stop_evt.set()
         if head_thread is not None:
             head_thread.join(timeout=0.5)
-        print("[DONE] Head + slow legs test finished.")
+        print("[DONE] Head + slow rear legs test finished.")
 
 
 if __name__ == "__main__":
