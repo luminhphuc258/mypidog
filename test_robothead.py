@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 0.08   # tăng lên cho chậm hơn nếu muốn
+DELAY_BETWEEN_WRITES = 0.08   # chỉnh nhanh/chậm tại đây
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
@@ -56,10 +56,11 @@ def load_pose_config(path: Path) -> dict:
 
 def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SETTLE_SEC):
     """
-    Đưa robot về pose chuẩn:
-      - Tất cả servo khác set thẳng về config.
-      - 2 chân sau (P5, P7) đi CHUNG, rất chậm (nội suy từng ~1 độ).
-      - 2 chân trước (P1, P3) set thẳng về config (không slow để tránh xoay ngược).
+    Flow:
+      0) Khởi tạo: 2 chân trước (P1, P3) set tạm về 50 độ.
+      1) Các servo khác (trừ P5,P7,P1,P3) set thẳng về pose config.
+      2) 2 chân sau (P5, P7) di chuyển RẤT CHẬM, cùng lúc, nội suy từng ~1 độ.
+      3) 2 chân trước (P1, P3) cuối cùng set thẳng về pose config.
     """
     print("[STEP1] Apply baseline pose from config (robot_hat.Servo)...")
 
@@ -72,7 +73,18 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             print(f"[WARN] Cannot init Servo({p}): {e}")
 
     rear_legs = {"P5", "P7"}     # 2 chân sau
-    front_legs = {"P1", "P3"}    # 2 chân trước (mapping của bạn, chỉnh nếu khác)
+    front_legs = {"P1", "P3"}    # 2 chân trước (mapping theo bạn)
+
+    # ===== STEP 0: set góc khởi tạo P1, P3 = 50 độ =====
+    print("  -> INIT front legs P1 & P3 to 50 deg...")
+    for p in front_legs:
+        if p not in servos:
+            continue
+        try:
+            servo_set_angle(servos[p], 50)
+            time.sleep(step_delay)
+        except Exception as e:
+            print(f"[WARN] Init {p} to 50deg failed: {e}")
 
     # Helper: di chuyển 1 cặp servo cùng lúc, rất chậm
     def move_pair_slow(port_a, port_b):
@@ -86,7 +98,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         target_a = clamp(cfg.get(port_a, 0))
         target_b = clamp(cfg.get(port_b, 0))
 
-        # Giả định ban đầu ~0 độ (safe). Bước nhỏ nên ổn.
+        # Giả định ban đầu ~0 độ cho pair này (bước nhỏ nên an toàn)
         curr_a = 0
         curr_b = 0
 
@@ -113,7 +125,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
                 break
             time.sleep(step_delay)
 
-    # 1) Set tất cả servo KHÁC chân sau & chân trước trước tiên (một phát)
+    # ===== STEP 1: set các servo khác (không phải P5,P7,P1,P3) về pose config =====
     for p in SERVO_PORTS:
         if p not in servos:
             continue
@@ -125,12 +137,12 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         except Exception as e:
             print(f"[WARN] Apply {p} failed: {e}")
 
-    # 2) Di chuyển RẤT CHẬM 2 chân sau (P5, P7) cùng lúc
+    # ===== STEP 2: 2 chân sau P5 & P7 đi chậm cùng lúc =====
     print("  -> Slowly move REAR legs together (P5 & P7)...")
     move_pair_slow("P5", "P7")
 
-    # 3) 2 chân trước: set thẳng về pose config (không nội suy để tránh xoay ngược)
-    print("  -> Set FRONT legs direct (P1 & P3)...")
+    # ===== STEP 3: cuối cùng set 2 chân trước P1,P3 về pose config =====
+    print("  -> Set FRONT legs (P1 & P3) to config pose...")
     for p in front_legs:
         if p not in servos:
             continue
@@ -140,7 +152,7 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         except Exception as e:
             print(f"[WARN] Apply {p} failed: {e}")
 
-    # 4) Đợi robot ổn định
+    # Đợi robot ổn định
     if settle_sec and settle_sec > 0:
         print(f"[STABLE] settle {settle_sec:.1f}s ...")
         time.sleep(settle_sec)
@@ -208,7 +220,7 @@ def start_head_controller(
 def main():
     print("=== SIMPLE HEAD + SLOW REAR LEGS TEST ===")
 
-    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau)
+    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau, init chân trước = 50°)
     cfg = load_pose_config(POSE_FILE)
     apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
