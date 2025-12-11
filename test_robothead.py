@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 0.2   # chỉnh nhanh/chậm tại đây
+DELAY_BETWEEN_WRITES = 0.4   # tăng lên cho chậm hơn nếu muốn
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
@@ -56,13 +56,10 @@ def load_pose_config(path: Path) -> dict:
 
 def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SETTLE_SEC):
     """
-    Flow:
-      0) Khởi tạo: 2 chân trước (P1, P3) set tạm:
-           - P1 = 50 độ
-           - P3 = -50 độ (ngược lại cho đúng hướng)
-      1) Các servo khác (trừ P5,P7,P1,P3) set thẳng về pose config.
-      2) 2 chân sau (P5, P7) di chuyển RẤT CHẬM, cùng lúc.
-      3) 2 chân trước (P1, P3) cuối cùng set thẳng về pose config.
+    Đưa robot về pose chuẩn:
+      - Bước 1: tất cả servo KHÁC P5,P7,P1,P3 set thẳng về config.
+      - Bước 2: 2 chân sau (P5, P7) đi CHUNG, rất chậm (nội suy từng ~1 độ).
+      - Bước 3: sau khi xong P5,P7 -> mới bắt đầu di chuyển 2 chân trước (P1, P3) từng chân, chậm.
     """
     print("[STEP1] Apply baseline pose from config (robot_hat.Servo)...")
 
@@ -77,25 +74,100 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
     rear_legs = {"P5", "P7"}     # 2 chân sau
     front_legs = {"P1", "P3"}    # 2 chân trước
 
-    # ===== STEP 0: set góc khởi tạo riêng cho P1 và P3 =====
-    init_angles = {
-        "P1": 10,    # chân này đang ok
-        "P3": -10,   # chỉnh ngược chiều lại
-    }
+    # --------- Helper: move pair slow (P5,P7) ----------
+    def move_pair_slow(port_a, port_b):
+        if port_a not in servos or port_b not in servos:
+            print(f"[WARN] Missing servo {port_a} or {port_b}, skip slow pair.")
+            return
 
-    print("  -> INIT front legs P1 & P3 (P1=50, P3=-50)...")
-    for p in front_legs:
+        s_a = servos[port_a]
+        s_b = servos[port_b]
+
+        target_a = clamp(cfg.get(port_a, 0))
+        target_b = clamp(cfg.get(port_b, 0))
+
+        # Giả định start ~0 độ
+        curr_a = 0
+        curr_b = 0
+
+        da = target_a - curr_a
+        db = target_b - curr_b
+
+        steps = int(max(abs(da), abs(db)))  # ~1 độ/bước
+        if steps <= 0:
+            servo_set_angle(s_a, target_a)
+            servo_set_angle(s_b, target_b)
+            time.sleep(step_delay)
+            return
+
+        print(f"  -> Slow pair {port_a}/{port_b}: {steps} mini-steps")
+        for i in range(steps + 1):
+            frac = i / float(steps)
+            angle_a = curr_a + da * frac
+            angle_b = curr_b + db * frac
+            try:
+                servo_set_angle(s_a, angle_a)
+                servo_set_angle(s_b, angle_b)
+            except Exception as e:
+                print(f"[WARN] move_pair_slow {port_a}/{port_b}: {e}")
+                break
+            time.sleep(step_delay)
+
+    # --------- Helper: move single leg slow (P1 or P3) ----------
+    def move_single_slow(port):
+        if port not in servos:
+            print(f"[WARN] Missing servo {port}, skip slow move.")
+            return
+
+        s = servos[port]
+        target = clamp(cfg.get(port, 0))
+
+        curr = 0   # giả định từ 0; nếu muốn, có thể đổi thành góc bạn đo thực tế
+        d = target - curr
+        steps = int(abs(d))
+        if steps <= 0:
+            servo_set_angle(s, target)
+            time.sleep(step_delay)
+            return
+
+        print(f"  -> Slow leg {port}: {steps} mini-steps")
+        for i in range(steps + 1):
+            frac = i / float(steps)
+            angle = curr + d * frac
+            try:
+                servo_set_angle(s, angle)
+            except Exception as e:
+                print(f"[WARN] move_single_slow {port}: {e}")
+                break
+            time.sleep(step_delay)
+
+    # ===== BƯỚC 1: set tất cả servo KHÁC chân sau & chân trước =====
+    for p in SERVO_PORTS:
         if p not in servos:
             continue
+        if p in rear_legs or p in front_legs:
+            # P5,P7,P1,P3 tạm thời chưa đụng
+            continue
         try:
-            ang = init_angles.get(p, 50)
-            servo_set_angle(servos[p], ang)
+            servo_set_angle(servos[p], cfg.get(p, 0))
             time.sleep(step_delay)
         except Exception as e:
-            print(f"[WARN] Init {p} failed: {e}")
+            print(f"[WARN] Apply {p} failed: {e}")
 
-    # ... phía dưới giữ nguyên như code cũ (set các servo khác, move_pair_slow P5/P7, 
-    # rồi cuối cùng set lại P1,P3 theo cfg) ...
+    # ===== BƯỚC 2: Di chuyển RẤT CHẬM 2 chân sau (P5, P7) cùng lúc =====
+    print("  -> Slowly move REAR legs together (P5 & P7)...")
+    move_pair_slow("P5", "P7")
+
+    # ===== BƯỚC 3: SAU KHI XONG P5,P7 MỚI BẮT ĐẦU DI CHUYỂN P1,P3 =====
+    print("  -> Slowly move FRONT legs (P1 then P3)...")
+    move_single_slow("P1")
+    move_single_slow("P3")
+
+    # ===== Chờ ổn định =====
+    if settle_sec and settle_sec > 0:
+        print(f"[STABLE] settle {settle_sec:.1f}s ...")
+        time.sleep(settle_sec)
+
 
 # ===================== HEAD LOCK + WIGGLE THREAD =====================
 
@@ -159,7 +231,7 @@ def start_head_controller(
 def main():
     print("=== SIMPLE HEAD + SLOW REAR LEGS TEST ===")
 
-    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau, init chân trước = 50°)
+    # STEP 1: trả robot về pose chuẩn trong file (có slow move cho chân sau & sau đó chân trước)
     cfg = load_pose_config(POSE_FILE)
     apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
 
@@ -196,7 +268,7 @@ def main():
             head_stop_evt.set()
         if head_thread is not None:
             head_thread.join(timeout=0.5)
-        print("[DONE] Head + slow rear legs test finished.")
+        print("[DONE] Head + slow legs test finished.")
 
 
 if __name__ == "__main__":
