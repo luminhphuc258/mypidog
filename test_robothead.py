@@ -12,7 +12,7 @@ from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
-DELAY_BETWEEN_WRITES = 1.0   # bước nhỏ để đi rất chậm
+DELAY_BETWEEN_WRITES = 0.2   # bước nhỏ để đi rất chậm
 SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
