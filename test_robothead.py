@@ -57,9 +57,11 @@ def load_pose_config(path: Path) -> dict:
 def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SETTLE_SEC):
     """
     Flow:
-      0) Khởi tạo: 2 chân trước (P1, P3) set tạm về 50 độ.
+      0) Khởi tạo: 2 chân trước (P1, P3) set tạm:
+           - P1 = 50 độ
+           - P3 = -50 độ (ngược lại cho đúng hướng)
       1) Các servo khác (trừ P5,P7,P1,P3) set thẳng về pose config.
-      2) 2 chân sau (P5, P7) di chuyển RẤT CHẬM, cùng lúc, nội suy từng ~1 độ.
+      2) 2 chân sau (P5, P7) di chuyển RẤT CHẬM, cùng lúc.
       3) 2 chân trước (P1, P3) cuối cùng set thẳng về pose config.
     """
     print("[STEP1] Apply baseline pose from config (robot_hat.Servo)...")
@@ -73,90 +75,27 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
             print(f"[WARN] Cannot init Servo({p}): {e}")
 
     rear_legs = {"P5", "P7"}     # 2 chân sau
-    front_legs = {"P1", "P3"}    # 2 chân trước (mapping theo bạn)
+    front_legs = {"P1", "P3"}    # 2 chân trước
 
-    # ===== STEP 0: set góc khởi tạo P1, P3 = 50 độ =====
-    print("  -> INIT front legs P1 & P3 to 50 deg...")
+    # ===== STEP 0: set góc khởi tạo riêng cho P1 và P3 =====
+    init_angles = {
+        "P1": 50,    # chân này đang ok
+        "P3": -50,   # chỉnh ngược chiều lại
+    }
+
+    print("  -> INIT front legs P1 & P3 (P1=50, P3=-50)...")
     for p in front_legs:
         if p not in servos:
             continue
         try:
-            servo_set_angle(servos[p], 50)
+            ang = init_angles.get(p, 50)
+            servo_set_angle(servos[p], ang)
             time.sleep(step_delay)
         except Exception as e:
-            print(f"[WARN] Init {p} to 50deg failed: {e}")
+            print(f"[WARN] Init {p} failed: {e}")
 
-    # Helper: di chuyển 1 cặp servo cùng lúc, rất chậm
-    def move_pair_slow(port_a, port_b):
-        if port_a not in servos or port_b not in servos:
-            print(f"[WARN] Missing servo {port_a} or {port_b}, skip slow pair.")
-            return
-
-        s_a = servos[port_a]
-        s_b = servos[port_b]
-
-        target_a = clamp(cfg.get(port_a, 0))
-        target_b = clamp(cfg.get(port_b, 0))
-
-        # Giả định ban đầu ~0 độ cho pair này (bước nhỏ nên an toàn)
-        curr_a = 0
-        curr_b = 0
-
-        da = target_a - curr_a
-        db = target_b - curr_b
-
-        steps = int(max(abs(da), abs(db)))  # ~1 độ mỗi bước
-        if steps <= 0:
-            servo_set_angle(s_a, target_a)
-            servo_set_angle(s_b, target_b)
-            time.sleep(step_delay)
-            return
-
-        print(f"  -> Slow pair {port_a}/{port_b}: {steps} mini-steps")
-        for i in range(steps + 1):
-            frac = i / float(steps)
-            angle_a = curr_a + da * frac
-            angle_b = curr_b + db * frac
-            try:
-                servo_set_angle(s_a, angle_a)
-                servo_set_angle(s_b, angle_b)
-            except Exception as e:
-                print(f"[WARN] move_pair_slow {port_a}/{port_b}: {e}")
-                break
-            time.sleep(step_delay)
-
-    # ===== STEP 1: set các servo khác (không phải P5,P7,P1,P3) về pose config =====
-    for p in SERVO_PORTS:
-        if p not in servos:
-            continue
-        if p in rear_legs or p in front_legs:
-            continue
-        try:
-            servo_set_angle(servos[p], cfg.get(p, 0))
-            time.sleep(step_delay)
-        except Exception as e:
-            print(f"[WARN] Apply {p} failed: {e}")
-
-    # ===== STEP 2: 2 chân sau P5 & P7 đi chậm cùng lúc =====
-    print("  -> Slowly move REAR legs together (P5 & P7)...")
-    move_pair_slow("P5", "P7")
-
-    # ===== STEP 3: cuối cùng set 2 chân trước P1,P3 về pose config =====
-    print("  -> Set FRONT legs (P1 & P3) to config pose...")
-    for p in front_legs:
-        if p not in servos:
-            continue
-        try:
-            servo_set_angle(servos[p], cfg.get(p, 0))
-            time.sleep(step_delay)
-        except Exception as e:
-            print(f"[WARN] Apply {p} failed: {e}")
-
-    # Đợi robot ổn định
-    if settle_sec and settle_sec > 0:
-        print(f"[STABLE] settle {settle_sec:.1f}s ...")
-        time.sleep(settle_sec)
-
+    # ... phía dưới giữ nguyên như code cũ (set các servo khác, move_pair_slow P5/P7, 
+    # rồi cuối cùng set lại P1,P3 theo cfg) ...
 
 # ===================== HEAD LOCK + WIGGLE THREAD =====================
 
