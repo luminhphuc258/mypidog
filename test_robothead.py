@@ -1,110 +1,183 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import time
 import json
+import time
+import random
+import threading
+from pathlib import Path
+
 from robot_hat import Servo
 from matthewpidogclassinit import MatthewPidogBootClass
 
-POSE_FILE = "./pidog_pose_config.txt"
-
+POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
+SERVO_PORTS = [f"P{i}" for i in range(12)]  # P0..P11
+DELAY_BETWEEN_WRITES = 0.01
+SETTLE_SEC = 1.0
 ANGLE_MIN, ANGLE_MAX = -90, 90
 
+
 def clamp(v, lo=ANGLE_MIN, hi=ANGLE_MAX):
-    v = int(v)
+    try:
+        v = int(v)
+    except Exception:
+        v = 0
     return max(lo, min(hi, v))
 
 
-# ==============================================================
-# 1) LOAD POSE CHUẨN TỪ FILE → ĐƯA ROBOT VỀ SAFE-POSE
-# ==============================================================
+def servo_set_angle(servo_obj, angle: int):
+    angle = clamp(angle)
+    for method_name in ("angle", "write", "set_angle", "setAngle"):
+        m = getattr(servo_obj, method_name, None)
+        if callable(m):
+            m(angle)
+            return
+    if callable(servo_obj):
+        servo_obj(angle)
+        return
+    raise RuntimeError("Servo object has no known angle/write method")
 
-def load_safe_pose_from_config(file_path):
-    print("[STEP 1] Loading baseline pose BEFORE boot Pidog...")
 
-    # Load JSON pose file
-    with open(file_path, "r") as f:
-        pose_data = json.load(f)
+def load_pose_config(path: Path) -> dict:
+    cfg = {p: 0 for p in SERVO_PORTS}
+    if not path.exists():
+        print(f"[WARN] Pose file not found: {path} -> use all zeros.")
+        return cfg
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if k in cfg:
+                    cfg[k] = clamp(v)
+    except Exception as e:
+        print(f"[WARN] Pose file parse error: {e} -> use all zeros.")
+    return cfg
 
-    # Apply servo angles
-    for servo_name, angle in pose_data.items():
+
+def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SETTLE_SEC):
+    print("[STEP1] Apply baseline pose from config (robot_hat.Servo)...")
+    servos = {}
+    for p in SERVO_PORTS:
         try:
-            s = Servo(servo_name)
-            s.angle(clamp(angle))
+            servos[p] = Servo(p)
         except Exception as e:
-            print(f"   [WARN] Cannot move {servo_name}: {e}")
+            print(f"[WARN] Cannot init Servo({p}): {e}")
 
-    time.sleep(1)
-    print("[OK] Robot is now in SAFE baseline pose.")
+    for p in SERVO_PORTS:
+        if p not in servos:
+            continue
+        try:
+            servo_set_angle(servos[p], cfg.get(p, 0))
+            time.sleep(step_delay)
+        except Exception as e:
+            print(f"[WARN] Apply {p} failed: {e}")
+
+    if settle_sec and settle_sec > 0:
+        print(f"[STABLE] settle {settle_sec:.1f}s ...")
+        time.sleep(settle_sec)
 
 
-# ==============================================================
-# 2) XOAY ĐẦU – P8/P9 CỐ ĐỊNH – P10 LẮC TRÁI/PHẢI
-# ==============================================================
+# ===================== HEAD LOCK + WIGGLE THREAD =====================
 
-def head_wiggle(p8=32, p9=-90, p10_min=-60, p10_max=60):
+def start_head_controller(
+    p8_fixed=32,          # giữ nguyên P8
+    p9_fixed=-90,         # giữ nguyên P9
+    p10_min=-80,          # P10 lắc từ -60
+    p10_max=80,           # tới +60
+    write_interval=0.08,  # ghi khá nhanh cho chắc
+    hold_range=(0.5, 1.2)
+):
+    """
+    - P8: luôn giữ p8_fixed
+    - P9: luôn giữ p9_fixed
+    - P10: lắc qua lại giữa p10_min và p10_max
+    """
+    stop_evt = threading.Event()
 
-    print("[STEP 4] Starting head wiggle... press Ctrl+C to stop.")
+    try:
+        s8 = Servo("P8")
+        s9 = Servo("P9")
+        s10 = Servo("P10")
+    except Exception as e:
+        print(f"[WARN] Cannot init head servos P8/P9/P10: {e}")
+        return stop_evt, None
 
-    s8 = Servo("P8")
-    s9 = Servo("P9")
-    s10 = Servo("P10")
+    def worker():
+        # set lần đầu
+        try:
+            s8.angle(clamp(p8_fixed))
+            s9.angle(clamp(p9_fixed))
+            s10.angle(clamp(p10_min))
+        except Exception:
+            pass
 
-    # Fix P8, P9
-    s8.angle(clamp(p8))
-    s9.angle(clamp(p9))
-    s10.angle(0)
-    time.sleep(0.4)
+        target = p10_min
+        next_flip = time.time() + random.uniform(*hold_range)
 
-    direction = 1
-    cur = p10_min
-    STEP = 3
-    DELAY = 0.06
+        while not stop_evt.is_set():
+            now = time.time()
+
+            if now >= next_flip:
+                # đổi hướng lắc
+                target = p10_max if target == p10_min else p10_min
+                next_flip = now + random.uniform(*hold_range)
+
+            try:
+                s8.angle(clamp(p8_fixed))
+                s9.angle(clamp(p9_fixed))
+                s10.angle(clamp(target))
+            except Exception:
+                pass
+
+            time.sleep(write_interval)
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    return stop_evt, t
+
+
+def main():
+    print("=== SIMPLE HEAD TEST ===")
+
+    # STEP 1: trả robot về pose chuẩn trong file
+    cfg = load_pose_config(POSE_FILE)
+    apply_pose_config(cfg, step_delay=DELAY_BETWEEN_WRITES, settle_sec=1.0)
+
+    # STEP 2: khởi tạo Pidog qua MatthewPidogBootClass
+    print("[STEP2] Boot Pidog via MatthewPidogBootClass...")
+    boot = MatthewPidogBootClass()
+    dog = boot.create()
+    time.sleep(1.0)
+
+    # STEP 3: cho robot đứng lên chuẩn
+    print("[STEP3] dog.stand() ...")
+    dog.do_action("stand", speed=30)
+    dog.wait_all_done()
+    time.sleep(0.5)
+
+    # STEP 4: bắt đầu lắc đầu
+    print("[STEP4] Start head wiggle (P8,P9 fixed; P10 -60..+60). Ctrl+C to stop.")
+    head_stop_evt, head_thread = start_head_controller(
+        p8_fixed=32,
+        p9_fixed=-90,
+        p10_min=-60,
+        p10_max=60,
+        write_interval=0.08,
+        hold_range=(0.6, 1.5),
+    )
 
     try:
         while True:
-            s8.angle(clamp(p8))
-            s9.angle(clamp(p9))
-            s10.angle(clamp(cur))
-
-            time.sleep(DELAY)
-            cur += STEP * direction
-
-            if cur >= p10_max:
-                cur = p10_max
-                direction = -1
-            elif cur <= p10_min:
-                cur = p10_min
-                direction = 1
-
+            time.sleep(0.5)   # chỉ giữ cho chương trình sống
     except KeyboardInterrupt:
-        print("\n[STOP] Returning head to center...")
-        s10.angle(0)
-        time.sleep(0.3)
+        print("\n[EXIT] Ctrl+C pressed, stopping head thread...")
+    finally:
+        if head_stop_evt is not None:
+            head_stop_evt.set()
+        if head_thread is not None:
+            head_thread.join(timeout=0.5)
+        print("[DONE] Head test finished.")
 
-
-# ==============================================================
-# MAIN FLOW
-# ==============================================================
 
 if __name__ == "__main__":
-
-    print("\n=========== MATTHEW PIDOG – SAFE FLOW START ===========\n")
-
-    # STEP 1: Load safe pose from config BEFORE boot
-    load_safe_pose_from_config(POSE_FILE)
-
-    # STEP 2: Khởi tạo Pidog (MatthewPidogBootClass)
-    print("[STEP 2] Booting MatthewPidogBootClass...")
-    dog = MatthewPidogBootClass()
-    dog.boot()   # Important boot sequence
-    time.sleep(0.5)
-
-    # STEP 3: Cho robot ĐỨNG LÊN chuẩn Pidog
-    print("[STEP 3] Command robot to STAND...")
-    dog.do_action("stand", speed=1)
-    dog.wait_all_done()
-    time.sleep(0.3)
-
-    # STEP 4: Bắt đầu xoay đầu
-    head_wiggle()
+    main()
