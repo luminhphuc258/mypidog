@@ -79,8 +79,8 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
 
     # ===== STEP 0: set góc khởi tạo riêng cho P1 và P3 =====
     init_angles = {
-        "P1": 50,    # chân này đang ok
-        "P3": -50,   # chỉnh ngược chiều lại
+        "P1": 20,    # chân này đang ok
+        "P3": -20,   # chỉnh ngược chiều lại
     }
 
     print("  -> INIT front legs P1 & P3 (P1=50, P3=-50)...")
