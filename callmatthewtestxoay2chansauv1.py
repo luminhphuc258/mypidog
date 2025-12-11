@@ -30,41 +30,41 @@ def load_pose_config(path: Path) -> dict:
 def main():
     cfg = load_pose_config(POSE_FILE)
 
-    # góc đích từ file config
-    target_p3 = clamp(cfg.get("P3", -20))
-    target_p5 = clamp(cfg.get("P5",  20))
+    # Lấy góc mục tiêu cho P5 và P7 từ file config
+    target_p5 = clamp(cfg.get("P5", -5))
+    target_p7 = clamp(cfg.get("P7", -5))
 
-    print("Target P3:", target_p3, " | Target P5:", target_p5)
+    # Góc hiện tại bạn nói
+    angle_p5 = -5
+    angle_p7 = -5
 
-    s3 = Servo("P3")
+    print("Target P5:", target_p5, "| Target P7:", target_p7)
+
     s5 = Servo("P5")
+    s7 = Servo("P7")
 
-    # góc hiện tại (bạn nói): P3 = -20, P5 = 20
-    angle3 = -20
-    angle5 = 20
-
-    # set lần đầu
-    s3.angle(angle3)
-    s5.angle(angle5)
+    # set ngay góc ban đầu
+    s5.angle(angle_p5)
+    s7.angle(angle_p7)
     time.sleep(0.3)
 
-    step_delay = 0.03  # chỉnh lớn hơn nếu muốn chậm hơn
+    step_delay = 0.03   # chỉnh lớn nếu muốn chậm hơn
 
-    # di chuyển CÙNG LÚC:
-    # - P3 chỉ được đi theo chiều âm (giảm dần)
-    # - P5 chỉ được đi theo chiều dương (tăng dần)
-    while (angle3 > target_p3) or (angle5 < target_p5):
-        if angle3 > target_p3:
-            angle3 -= 1   # quay theo chiều âm
-        if angle5 < target_p5:
-            angle5 += 1   # quay theo chiều dương
+    # Cả 2 servo xoay cùng một chiều âm (giảm dần)
+    while (angle_p5 > target_p5) or (angle_p7 > target_p7):
 
-        s3.angle(clamp(angle3))
-        s5.angle(clamp(angle5))
+        if angle_p5 > target_p5:
+            angle_p5 -= 1  # quay âm
+
+        if angle_p7 > target_p7:
+            angle_p7 -= 1  # quay âm
+
+        s5.angle(clamp(angle_p5))
+        s7.angle(clamp(angle_p7))
 
         time.sleep(step_delay)
 
-    print("Done: P3, P5 đã tới góc config.")
+    print("DONE: P5 & P7 đã xoay đến góc config.")
 
 if __name__ == "__main__":
     main()
