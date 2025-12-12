@@ -10,7 +10,7 @@ P7_START = -13      # P7 từ -13°
 
 # Góc "chịu lực" (lock) của P4, P6
 P4_LOCK = 90        # P4 = 90°
-P6_LOCK = -90       # P6 = -90°
+P6_LOCK = -80       # P6 = -90°
 
 # 🔁 Góc đích mới
 P5_TARGET = 6      # xoay tới +15°
