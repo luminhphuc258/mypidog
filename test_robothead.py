@@ -86,6 +86,8 @@ def apply_pose_config(cfg: dict, step_delay=DELAY_BETWEEN_WRITES, settle_sec=SET
         target_a = clamp(cfg.get(port_a, 0))
         target_b = clamp(cfg.get(port_b, 0))
 
+        
+
         curr_a = 0
         curr_b = 0
 
