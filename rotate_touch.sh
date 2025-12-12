@@ -1,34 +1,20 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-# --- cấu hình ---
-# tên device touch trong `xinput list`
-TOUCH_NAME="${TOUCH_NAME:-Waveshare WS170120}"
+# Tìm ID touch device (ưu tiên Waveshare / Touch)
+TOUCH_ID=$(xinput list | grep -i -E "waveshare|touch|ilitek|goodix|d-wav" | grep -o "id=[0-9]*" | head -n1 | cut -d= -f2)
 
-# Ma trận cho xoay 180 độ (inverted)
-MATRIX=(-1 0 1  0 -1 1  0 0 1)
-
-# --- đảm bảo chạy trong X11 session ---
-: "${DISPLAY:=:0}"
-export DISPLAY
-
-# nếu chạy từ autostart / service mà thiếu XAUTHORITY
-if [[ -z "${XAUTHORITY:-}" ]]; then
-  export XAUTHORITY="$HOME/.Xauthority"
+if [ -z "$TOUCH_ID" ]; then
+    echo "❌ Không tìm thấy touch device"
+    xinput list
+    exit 1
 fi
 
-# --- tìm id của touch ---
-TOUCH_ID="$(xinput list --id-only "$TOUCH_NAME" 2>/dev/null || true)"
+echo "✅ Touch device ID = $TOUCH_ID"
 
-if [[ -z "$TOUCH_ID" ]]; then
-  echo "[ERR] Không tìm thấy touch device tên: '$TOUCH_NAME'"
-  echo "      Hãy chạy: xinput list  (xem đúng tên rồi sửa TOUCH_NAME)"
-  exit 1
-fi
+# Xoay touch 180 độ
+xinput set-prop "$TOUCH_ID" "Coordinate Transformation Matrix" \
+-1 0 1 \
+0 -1 1 \
+0 0 1
 
-echo "[OK] Touch device: '$TOUCH_NAME' id=$TOUCH_ID"
-echo "[DO] Apply Coordinate Transformation Matrix (rotate 180)..."
-
-xinput set-prop "$TOUCH_ID" "Coordinate Transformation Matrix" "${MATRIX[@]}"
-
-echo "[DONE] Touch rotated 180°."
+echo "✅ Touch rotated 180°"
