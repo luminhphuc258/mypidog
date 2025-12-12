@@ -5,24 +5,27 @@ import time
 from robot_hat import Servo
 
 # ===== REAR LEGS (P5, P7) =====
-P5_START = 18       # P5 từ +18°
-P7_START = -13      # P7 từ -13°
-P5_TARGET = 4       # target cuối của P5
-P7_TARGET = -1      # target cuối của P7
+P5_START = 18
+P7_START = -13
+P5_TARGET = 4
+P7_TARGET = -1
 
 # ===== LOAD LEGS (LOCK) =====
-P4_LOCK = 80        # P4 chịu lực
-P6_LOCK = -70       # P6 chịu lực
+P4_LOCK = 80
+P6_LOCK = -70
 
 # ===== FRONT HIP (P0, P2) =====
-P0_TARGET = 40      # P0 về +40°
-P2_TARGET = -26     # P2 về -26°
+P0_TARGET = 40
+P2_TARGET = -26
 
 # ===== FRONT KNEE (P1, P3) =====
 P1_START = -25
 P1_TARGET = -65
 P3_START = 4
 P3_TARGET = -68
+
+# ✅ FIX: P1 bị ngược chiều -> đảo dấu (mirror)
+P1_INVERT = True
 
 DELAY = 0.05
 ANGLE_MIN, ANGLE_MAX = -90, 90
@@ -39,6 +42,11 @@ def apply_angle(servo, angle):
         print(f"[WARN] servo error: {e}")
 
 
+def apply_angle_p1(servo, angle):
+    a = -angle if P1_INVERT else angle
+    apply_angle(servo, a)
+
+
 def main():
     print("=== INIT servos P0..P7 ===")
     s0 = Servo("P0")
@@ -50,126 +58,86 @@ def main():
     s6 = Servo("P6")
     s7 = Servo("P7")
 
-    # STEP 1: đưa P4, P6 về góc lock (chịu lực)
-    print("=== STEP 1: Set load legs P4,P6 lock ===")
+    # STEP 1: lock P4,P6
+    print("=== STEP 1: Lock P4,P6 ===")
     apply_angle(s4, P4_LOCK)
     apply_angle(s6, P6_LOCK)
-    print(f"INIT -> P4 = {P4_LOCK}°, P6 = {P6_LOCK}°")
     time.sleep(0.5)
 
-    # STEP 2: đưa P5, P7 về góc bắt đầu
-    print("=== STEP 2: Move P5 to +18°, P7 to -13° ===")
+    # STEP 2: set P5,P7 start
+    print("=== STEP 2: Set P5,P7 start ===")
     curr_P5 = P5_START
     curr_P7 = P7_START
     apply_angle(s5, curr_P5)
     apply_angle(s7, curr_P7)
-    print(f"INIT -> P5 = {curr_P5}°, P7 = {curr_P7}°")
-
-    # đảm bảo P4, P6 vẫn đang lock
     apply_angle(s4, P4_LOCK)
     apply_angle(s6, P6_LOCK)
     time.sleep(1.0)
 
-    # STEP 3: luân phiên move P5, P7 tới target
-    print("=== STEP 3: Alternating move REAR legs P5,P7 with P4,P6 locked ===")
-    print(f"TARGET REAR -> P5 = {P5_TARGET}°, P7 = {P7_TARGET}°")
-
+    # STEP 3: alternating move P5,P7
+    print("=== STEP 3: Move REAR P5,P7 (alt) with P4,P6 locked ===")
     rear_step_idx = 0
     while curr_P5 != P5_TARGET or curr_P7 != P7_TARGET:
         rear_step_idx += 1
-
-        # luôn giữ P4, P6 khóa mỗi vòng lặp
         apply_angle(s4, P4_LOCK)
         apply_angle(s6, P6_LOCK)
 
-        # ---- Move P5 ----
         if curr_P5 != P5_TARGET:
-            if P5_TARGET > curr_P5:
-                curr_P5 += 1
-            elif P5_TARGET < curr_P5:
-                curr_P5 -= 1
+            curr_P5 += 1 if P5_TARGET > curr_P5 else -1
             apply_angle(s5, curr_P5)
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
-            print(f"[REAR {rear_step_idx}] P5 -> {curr_P5}°   "
-                  f"(P7 = {curr_P7}° | P4 = {P4_LOCK}° | P6 = {P6_LOCK}°)")
+            print(f"[REAR {rear_step_idx}] P5 -> {curr_P5}°   (P7={curr_P7}°)")
             time.sleep(DELAY)
 
-        # ---- Move P7 ----
         if curr_P7 != P7_TARGET:
-            if P7_TARGET > curr_P7:
-                curr_P7 += 1
-            elif P7_TARGET < curr_P7:
-                curr_P7 -= 1
+            curr_P7 += 1 if P7_TARGET > curr_P7 else -1
             apply_angle(s7, curr_P7)
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
-            print(f"[REAR {rear_step_idx}] P7 -> {curr_P7}°   "
-                  f"(P5 = {curr_P5}° | P4 = {P4_LOCK}° | P6 = {P6_LOCK}°)")
+            print(f"[REAR {rear_step_idx}] P7 -> {curr_P7}°   (P5={curr_P5}°)")
             time.sleep(DELAY)
 
     print("=== REAR DONE ===")
-    print(f"FINAL REAR -> P5 = {curr_P5}°, P7 = {curr_P7}°")
-    print(f"P4 (lock) = {P4_LOCK}°, P6 (lock) = {P6_LOCK}°")
 
-    # STEP 4: set P0, P2 về vị trí hip mong muốn
-    print("=== STEP 4: Move hip P0,P2 to fixed angles ===")
+    # STEP 4: set P0,P2
+    print("=== STEP 4: Set P0,P2 ===")
     apply_angle(s0, P0_TARGET)
     apply_angle(s2, P2_TARGET)
-    print(f"P0 -> {P0_TARGET}°, P2 -> {P2_TARGET}°")
-    # vẫn giữ P4,P6 lock
     apply_angle(s4, P4_LOCK)
     apply_angle(s6, P6_LOCK)
     time.sleep(1.0)
 
-    # STEP 5: move FRONT knees P1,P3 lần lượt
-    print("=== STEP 5: Alternating move FRONT knees P1,P3 with P4,P6 locked ===")
-    print(f"P1: {P1_START}° -> {P1_TARGET}°,  P3: {P3_START}° -> {P3_TARGET}°")
-
+    # STEP 5: move P1,P3 alternating (P1 inverted)
+    print("=== STEP 5: Move FRONT P1,P3 (alt) with P4,P6 locked ===")
     curr_P1 = P1_START
     curr_P3 = P3_START
-    apply_angle(s1, curr_P1)
+    apply_angle_p1(s1, curr_P1)   # ✅ P1 dùng hàm inverted
     apply_angle(s3, curr_P3)
 
     front_step_idx = 0
     while curr_P1 != P1_TARGET or curr_P3 != P3_TARGET:
         front_step_idx += 1
-
-        # luôn giữ P4, P6 khóa
         apply_angle(s4, P4_LOCK)
         apply_angle(s6, P6_LOCK)
 
-        # ---- Move P1 ----
         if curr_P1 != P1_TARGET:
-            if P1_TARGET > curr_P1:
-                curr_P1 += 1
-            elif P1_TARGET < curr_P1:
-                curr_P1 -= 1
-            apply_angle(s1, curr_P1)
+            curr_P1 += 1 if P1_TARGET > curr_P1 else -1
+            apply_angle_p1(s1, curr_P1)  # ✅ inverted
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
-            print(f"[FRONT {front_step_idx}] P1 -> {curr_P1}°   "
-                  f"(P3 = {curr_P3}° | P4 = {P4_LOCK}° | P6 = {P6_LOCK}°)")
+            print(f"[FRONT {front_step_idx}] P1(cmd) -> {curr_P1}°   (P3={curr_P3}°)")
             time.sleep(DELAY)
 
-        # ---- Move P3 ----
         if curr_P3 != P3_TARGET:
-            if P3_TARGET > curr_P3:
-                curr_P3 += 1
-            elif P3_TARGET < curr_P3:
-                curr_P3 -= 1
+            curr_P3 += 1 if P3_TARGET > curr_P3 else -1
             apply_angle(s3, curr_P3)
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
-            print(f"[FRONT {front_step_idx}] P3 -> {curr_P3}°   "
-                  f"(P1 = {curr_P1}° | P4 = {P4_LOCK}° | P6 = {P6_LOCK}°)")
+            print(f"[FRONT {front_step_idx}] P3 -> {curr_P3}°   (P1={curr_P1}°)")
             time.sleep(DELAY)
 
-    print("=== ALL DONE (rear + front) ===")
-    print(f"FINAL REAR -> P5 = {curr_P5}°, P7 = {curr_P7}°")
-    print(f"FINAL FRONT KNEE -> P1 = {curr_P1}°, P3 = {curr_P3}°")
-    print(f"FINAL HIP -> P0 = {P0_TARGET}°, P2 = {P2_TARGET}°")
-    print(f"P4 (lock) = {P4_LOCK}°, P6 (lock) = {P6_LOCK}°")
+    print("=== ALL DONE ===")
 
 
 if __name__ == "__main__":
