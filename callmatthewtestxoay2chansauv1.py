@@ -10,11 +10,11 @@ P7_START = -13      # P7 từ -13°
 
 # Góc "chịu lực" (lock) của P4, P6
 P4_LOCK = 90        # P4 = 90°
-P6_LOCK = -90       # 🔁 sửa lại: P6 = -90°
+P6_LOCK = -90       # P6 = -90°
 
-# Góc đích
-P5_TARGET = 90      # xoay tới +90°
-P7_TARGET = -90     # xoay tới -90°
+# 🔁 Góc đích mới
+P5_TARGET = 45      # xoay tới +45°
+P7_TARGET = -50     # xoay tới -50°
 
 DELAY = 0.05        # thời gian chờ giữa mỗi bước
 ANGLE_MIN, ANGLE_MAX = -90, 90
@@ -61,7 +61,7 @@ def main():
 
     # STEP 3: luân phiên move P5, P7 tới target,
     # luôn giữ P4, P6 ở góc lock (chịu lực)
-    print("=== STEP 3: Alternating move P5->90°, P7->-90° with P4,P6 locked ===")
+    print("=== STEP 3: Alternating move P5->45°, P7->-50° with P4,P6 locked ===")
     print(f"TARGET -> P5 = {P5_TARGET}°, P7 = {P7_TARGET}°")
 
     step_idx = 0
