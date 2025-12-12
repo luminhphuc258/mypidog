@@ -8,9 +8,9 @@ from robot_hat import Servo
 P5_START = 18       # P5 từ +18°
 P7_START = -13      # P7 từ -13°
 
-# Góc chịu lực (khóa) của P4, P6
-P4_LOCK = 10        # P4 = 10°
-P6_LOCK = 8         # P6 = 8°
+# Góc "chịu lực" (lock) mới của P4, P6
+P4_LOCK = 90        # P4 = 90°
+P6_LOCK = 90        # P6 = 90°
 
 # Góc đích
 P5_TARGET = 90      # xoay tới +90°
@@ -38,8 +38,8 @@ def main():
     s6 = Servo("P6")
     s7 = Servo("P7")
 
-    # STEP 1: đưa P4, P6 về góc chịu lực
-    print("=== STEP 1: Set load legs P4=10°, P6=8° (lock) ===")
+    # STEP 1: đưa P4, P6 về góc 90° (lock)
+    print("=== STEP 1: Set load legs P4=90°, P6=90° (lock) ===")
     apply_angle(s4, P4_LOCK)
     apply_angle(s6, P6_LOCK)
     print(f"INIT -> P4 = {P4_LOCK}°, P6 = {P6_LOCK}°")
