@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import json
 import time
+from pathlib import Path
 from robot_hat import Servo
-from matthewpidogclassinit import MatthewPidogBootClass
+
+POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
+SERVO_PORTS = [f"P{i}" for i in range(12)]
 
 # ===== REAR LEGS (P5, P7) =====
 P5_START = 18
@@ -25,7 +29,7 @@ P1_TARGET = -65
 P3_START = 4
 P3_TARGET = -68
 
-# ✅ FIX: P1 bị ngược chiều -> đảo dấu (mirror)
+# ✅ P1 ngược chiều -> đảo dấu (mirror)
 P1_INVERT = True
 
 DELAY = 0.05
@@ -46,6 +50,44 @@ def apply_angle(servo, angle):
 def apply_angle_p1(servo, angle):
     a = -angle if P1_INVERT else angle
     apply_angle(servo, a)
+
+
+def load_pose_config(path: Path) -> dict:
+    cfg = {p: 0 for p in SERVO_PORTS}
+    if not path.exists():
+        print(f"[WARN] Pose file not found: {path} -> all zeros.")
+        return cfg
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if k in cfg:
+                    cfg[k] = clamp(v)
+    except Exception as e:
+        print(f"[WARN] Pose file parse error: {e} -> all zeros.")
+    return cfg
+
+
+def apply_pose_from_cfg(cfg: dict, per_servo_delay=0.03, settle_sec=1.0):
+    print("=== APPLY POSE FROM CONFIG (ALL SERVOS) ===")
+    servos = {}
+    for p in SERVO_PORTS:
+        try:
+            servos[p] = Servo(p)
+        except Exception as e:
+            print(f"[WARN] Cannot init Servo({p}): {e}")
+
+    for p in SERVO_PORTS:
+        if p not in servos:
+            continue
+        try:
+            apply_angle(servos[p], cfg.get(p, 0))
+            time.sleep(per_servo_delay)
+        except Exception as e:
+            print(f"[WARN] Apply {p} failed: {e}")
+
+    if settle_sec and settle_sec > 0:
+        time.sleep(settle_sec)
 
 
 def main():
@@ -138,16 +180,11 @@ def main():
             print(f"[FRONT {front_step_idx}] P3 -> {curr_P3}°   (P1={curr_P1}°)")
             time.sleep(DELAY)
 
-    print("=== SERVOS DONE -> BOOT PIDOG & STAND ===")
+    print("=== 4 LEGS DONE ===")
 
-    # STEP 6: boot pidog + stand
-    boot = MatthewPidogBootClass()
-    dog = boot.create()
-    time.sleep(1.0)
-
-    dog.do_action("stand", speed=30)
-    dog.wait_all_done()
-    time.sleep(0.5)
+    # STEP 6: apply pose from file config then end
+    cfg = load_pose_config(POSE_FILE)
+    apply_pose_from_cfg(cfg, per_servo_delay=0.03, settle_sec=1.0)
 
     print("=== DONE ===")
 
