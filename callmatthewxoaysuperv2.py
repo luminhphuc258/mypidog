@@ -5,6 +5,7 @@ import json
 import time
 from pathlib import Path
 from robot_hat import Servo
+from matthewpidogclassinit import MatthewPidogBootClass
 
 POSE_FILE = Path(__file__).resolve().parent / "pidog_pose_config.txt"
 SERVO_PORTS = [f"P{i}" for i in range(12)]
@@ -88,6 +89,20 @@ def apply_pose_from_cfg(cfg: dict, per_servo_delay=0.03, settle_sec=1.0):
 
     if settle_sec and settle_sec > 0:
         time.sleep(settle_sec)
+
+
+def boot_and_stand():
+    print("=== BOOT MatthewPidogBootClass -> STAND ===")
+    boot = MatthewPidogBootClass()
+    dog = boot.create()
+    time.sleep(1.0)
+
+    dog.do_action("stand", speed=30)
+    dog.wait_all_done()
+    time.sleep(0.5)
+
+    print("=== STAND DONE ===")
+    return dog
 
 
 def main():
@@ -182,9 +197,12 @@ def main():
 
     print("=== 4 LEGS DONE ===")
 
-    # STEP 6: apply pose from file config then end
+    # STEP 6: apply pose from file config
     cfg = load_pose_config(POSE_FILE)
     apply_pose_from_cfg(cfg, per_servo_delay=0.03, settle_sec=1.0)
+
+    # STEP 7: boot Matthew pidog + stand
+    _dog = boot_and_stand()
 
     print("=== DONE ===")
 
