@@ -13,8 +13,8 @@ P4_LOCK = 90        # P4 = 90°
 P6_LOCK = -80       # P6 = -90°
 
 # 🔁 Góc đích mới
-P5_TARGET = 6      # xoay tới +15°
-P7_TARGET = -2     # xoay tới -15°
+P5_TARGET = 4      # xoay tới +15°
+P7_TARGET = -1     # xoay tới -15°
 
 DELAY = 0.05        # thời gian chờ giữa mỗi bước
 ANGLE_MIN, ANGLE_MAX = -90, 90
