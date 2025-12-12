@@ -3,13 +3,12 @@
 
 import time
 from robot_hat import Servo
-from matthewpidogclassinit import MatthewPidogBootClass
 
 # ===== REAR LEGS (P5, P7) =====
 P5_START = 18       # P5 từ +18°
 P7_START = -13      # P7 từ -13°
-P5_TARGET = 4       # target như trước
-P7_TARGET = -1
+P5_TARGET = 4       # target cuối của P5
+P7_TARGET = -1      # target cuối của P7
 
 # ===== LOAD LEGS (LOCK) =====
 P4_LOCK = 80        # P4 chịu lực
@@ -32,7 +31,6 @@ def apply_angle(servo, angle):
 
 def main():
     print("=== STEP 0: Init servos P4, P5, P6, P7 ===")
-    # chỉ cần 4 servo này vì mình đã bỏ bước 4,5
     s4 = Servo("P4")
     s5 = Servo("P5")
     s6 = Servo("P6")
@@ -58,7 +56,7 @@ def main():
     apply_angle(s6, P6_LOCK)
     time.sleep(1.0)
 
-    # STEP 3: luân phiên move P5, P7 tới target (rear legs)
+    # STEP 3: luân phiên move P5, P7 tới target
     print("=== STEP 3: Alternating move REAR legs P5,P7 with P4,P6 locked ===")
     print(f"TARGET -> P5 = {P5_TARGET}°, P7 = {P7_TARGET}°")
 
@@ -77,7 +75,6 @@ def main():
             elif P5_TARGET < curr_P5:
                 curr_P5 -= 1
             apply_angle(s5, curr_P5)
-            # lock lại P4, P6
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
             print(f"[REAR {step_idx}] P5 -> {curr_P5}°   "
@@ -91,28 +88,15 @@ def main():
             elif P7_TARGET < curr_P7:
                 curr_P7 -= 1
             apply_angle(s7, curr_P7)
-            # lock lại P4, P6
             apply_angle(s4, P4_LOCK)
             apply_angle(s6, P6_LOCK)
             print(f"[REAR {step_idx}] P7 -> {curr_P7}°   "
                   f"(P5 = {curr_P5}° | P4 = {P4_LOCK}° | P6 = {P6_LOCK}°)")
             time.sleep(DELAY)
 
-    print("=== REAR LEGS DONE ===")
+    print("=== DONE (up to STEP 3 only) ===")
     print(f"FINAL REAR -> P5 = {curr_P5}°, P7 = {curr_P7}°")
     print(f"P4 (lock) = {P4_LOCK}°, P6 (lock) = {P6_LOCK}°")
-
-    # === BOOT PIDOG + STAND ===
-    print("=== STEP 4: Boot MatthewPidog and stand ===")
-    boot = MatthewPidogBootClass()
-    dog = boot.create()
-    time.sleep(1.0)
-
-    print("[PIDOG] do_action('stand') ...")
-    dog.do_action("stand", speed=30)
-    dog.wait_all_done()
-    time.sleep(0.5)
-    print("[OK] Pidog stand pose applied. Done.")
 
 
 if __name__ == "__main__":
