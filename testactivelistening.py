@@ -114,10 +114,17 @@ def download_audio(url):
 
 def play_audio(filepath):
     print(f"[PLAY] Đang choi nhac {filepath}")
-    
-    # Nếu file là mp3 → convert sang wav
+
     if filepath.endswith(".mp3"):
-        filepath = convert_mp3_to_wav(filepath)
+        wav = convert_mp3_to_wav(filepath)
+        if not wav:
+            print("[PLAY ERROR] Convert mp3->wav failed, check ffmpeg.")
+            return
+        filepath = wav
+
+    if not os.path.exists(filepath):
+        print("[PLAY ERROR] File not found:", filepath)
+        return
 
     cmd = ["aplay", "-D", SPEAKER_DEVICE, "-q", filepath]
     subprocess.run(cmd, check=False)
@@ -125,16 +132,18 @@ def play_audio(filepath):
 
 
 def convert_mp3_to_wav(mp3_path):
-    wav_path = mp3_path.replace(".mp3", ".wav")
+    wav_path = mp3_path[:-4] + ".wav"
     cmd = [
-        "ffmpeg",
-        "-y",
+        "ffmpeg", "-y",
         "-i", mp3_path,
         "-ac", "1",
         "-ar", "16000",
         wav_path
     ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0 or (not os.path.exists(wav_path)) or os.path.getsize(wav_path) == 0:
+        print("[FFMPEG ERROR]", p.stderr.strip()[:400])
+        return None
     return wav_path
 import os
 import shutil
